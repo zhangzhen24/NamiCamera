@@ -46,57 +46,67 @@ FNamiCameraView UNamiFollowCameraMode::CalculateView_Implementation(float DeltaT
 	}
 	else if (DeltaTime > 0.0f)
 	{
-		// 平滑枢轴点
-		if (bEnableSmoothing && bEnablePivotSmoothing && PivotSmoothIntensity > 0.0f)
-		{
-			// 将平滑强度映射到实际平滑时间
-			float SmoothTime = FNamiCameraMath::MapSmoothIntensity(PivotSmoothIntensity);
-			CurrentPivotLocation = FNamiCameraMath::SmoothDamp(
-				CurrentPivotLocation,
-				TargetPivot,
-				PivotVelocity,
-				SmoothTime,
-				DeltaTime);
-		}
-		else
+		// 性能优化：如果平滑被禁用，直接设置目标值，跳过计算
+		if (!bEnableSmoothing)
 		{
 			CurrentPivotLocation = TargetPivot;
-		}
-
-		// 平滑相机位置
-		if (bEnableSmoothing && bEnableCameraLocationSmoothing && CameraLocationSmoothIntensity > 0.0f)
-		{
-			// 将平滑强度映射到实际平滑时间
-			float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraLocationSmoothIntensity);
-			CurrentCameraLocation = FNamiCameraMath::SmoothDamp(
-				CurrentCameraLocation,
-				TargetCameraLocation,
-				CameraVelocity,
-				SmoothTime,
-				DeltaTime);
-		}
-		else
-		{
 			CurrentCameraLocation = TargetCameraLocation;
-		}
-
-		// 平滑旋转
-		if (bEnableSmoothing && bEnableCameraRotationSmoothing && CameraRotationSmoothIntensity > 0.0f)
-		{
-			// 将平滑强度映射到实际平滑时间
-			float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraRotationSmoothIntensity);
-			CurrentCameraRotation = FNamiCameraMath::SmoothDampRotator(
-				CurrentCameraRotation,
-				TargetRotation,
-				YawVelocity,
-				PitchVelocity,
-				SmoothTime,
-				SmoothTime,
-				DeltaTime);
+			CurrentCameraRotation = TargetRotation;
 		}
 		else
 		{
-			CurrentCameraRotation = TargetRotation;
+			// 平滑枢轴点
+			if (bEnablePivotSmoothing && PivotSmoothIntensity > 0.0f)
+			{
+				// 将平滑强度映射到实际平滑时间
+				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(PivotSmoothIntensity);
+				CurrentPivotLocation = FNamiCameraMath::SmoothDamp(
+					CurrentPivotLocation,
+					TargetPivot,
+					PivotVelocity,
+					SmoothTime,
+					DeltaTime);
+			}
+			else
+			{
+				CurrentPivotLocation = TargetPivot;
+			}
+
+			// 平滑相机位置
+			if (bEnableCameraLocationSmoothing && CameraLocationSmoothIntensity > 0.0f)
+			{
+				// 将平滑强度映射到实际平滑时间
+				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraLocationSmoothIntensity);
+				CurrentCameraLocation = FNamiCameraMath::SmoothDamp(
+					CurrentCameraLocation,
+					TargetCameraLocation,
+					CameraVelocity,
+					SmoothTime,
+					DeltaTime);
+			}
+			else
+			{
+				CurrentCameraLocation = TargetCameraLocation;
+			}
+
+			// 平滑旋转
+			if (bEnableCameraRotationSmoothing && CameraRotationSmoothIntensity > 0.0f)
+			{
+				// 将平滑强度映射到实际平滑时间
+				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraRotationSmoothIntensity);
+				CurrentCameraRotation = FNamiCameraMath::SmoothDampRotator(
+					CurrentCameraRotation,
+					TargetRotation,
+					YawVelocity,
+					PitchVelocity,
+					SmoothTime,
+					SmoothTime,
+					DeltaTime);
+			}
+			else
+			{
+				CurrentCameraRotation = TargetRotation;
+			}
 		}
 	}
 

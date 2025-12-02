@@ -10,32 +10,6 @@
 //////////////////////////////////////////////////////////////////////////
 // FNamiSpringArm
 
-// 添加新的私有成员变量到FNamiSpringArm结构体
-struct FNamiSpringArmPrivate
-{
-	/** 上次碰撞检测时间 */
-	float LastCollisionCheckTime = 0.0f;
-
-	/** 碰撞检测结果缓存 */
-	FVector CachedCollisionLocation = FVector::ZeroVector;
-	bool bCachedCollisionHit = false;
-	float CollisionCacheExpireTime = 0.0f;
-
-	/** 碰撞恢复平滑速度 */
-	FVector CollisionRecoveryVelocity = FVector::ZeroVector;
-
-	/** 当前碰撞恢复位置 */
-	FVector CurrentCollisionRecoveryLocation = FVector::ZeroVector;
-};
-
-// 使用静态线程本地存储来保存私有数据
-static thread_local TMap<const FNamiSpringArm *, FNamiSpringArmPrivate> SpringArmPrivateData;
-
-FNamiSpringArmPrivate &GetPrivateData(const FNamiSpringArm *SpringArm)
-{
-	return SpringArmPrivateData.FindOrAdd(SpringArm);
-}
-
 void FNamiSpringArm::ApplyRotationLag(FRotator &InOutDesiredRot, float DeltaTime)
 {
 	if (bUseCameraLagSubstepping && DeltaTime > CameraLagMaxTimeStep && CameraRotationLagSpeed > 0.f)
@@ -124,7 +98,8 @@ FVector FNamiSpringArm::CalculateDesiredCameraLocation(const FVector &ArmOrigin,
 
 FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector &ArmOrigin, const FVector &DesiredLoc, const TArray<AActor *> &IgnoreActors)
 {
-	if (!World || TargetArmLength == 0.0f)
+	// 性能优化：早期退出条件
+	if (!World || !bDoCollisionTest || TargetArmLength == 0.0f)
 	{
 		UnfixedCameraPosition = DesiredLoc;
 		bIsCameraFixed = false;
@@ -154,14 +129,14 @@ FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector
 
 FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector &ArmOrigin, const FVector &DesiredLoc, const TArray<const AActor *> &IgnoreActors)
 {
-	if (!World || TargetArmLength == 0.0f)
+	// 性能优化：早期退出条件
+	if (!World || !bDoCollisionTest || TargetArmLength == 0.0f)
 	{
 		UnfixedCameraPosition = DesiredLoc;
 		bIsCameraFixed = false;
 		return DesiredLoc;
 	}
 
-	FNamiSpringArmPrivate &PrivateData = GetPrivateData(this);
 	float CurrentTime = World->GetTimeSeconds();
 
 	// 检查是否需要执行碰撞检测
@@ -170,7 +145,7 @@ FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector
 	// 频率控制
 	if (CollisionCheckFrequency > 0.0f)
 	{
-		if (CurrentTime - PrivateData.LastCollisionCheckTime < CollisionCheckFrequency)
+		if (CurrentTime - LastCollisionCheckTime < CollisionCheckFrequency)
 		{
 			bShouldPerformTrace = false;
 		}
@@ -179,7 +154,7 @@ FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector
 	// 缓存检查
 	if (CollisionCacheTime > 0.0f)
 	{
-		if (CurrentTime < PrivateData.CollisionCacheExpireTime)
+		if (CurrentTime < CollisionCacheExpireTime)
 		{
 			bShouldPerformTrace = false;
 		}
@@ -192,7 +167,7 @@ FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector
 	if (bShouldPerformTrace)
 	{
 		// 更新上次检查时间
-		PrivateData.LastCollisionCheckTime = CurrentTime;
+		LastCollisionCheckTime = CurrentTime;
 
 		bIsCameraFixed = true;
 		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(SpringArm), false);
@@ -207,19 +182,38 @@ FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector
 		bHitSomething = Result.bBlockingHit;
 		TraceHitLocation = Result.Location;
 
+		// 绘制调试信息
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+		if (bDrawDebugCollision)
+		{
+			// 绘制射线
+			DrawDebugLine(World, ArmOrigin, DesiredLoc, bHitSomething ? FColor::Red : FColor::Green, false, -1.0f, 0, 2.0f);
+			
+			// 绘制碰撞点
+			if (bHitSomething)
+			{
+				DrawDebugSphere(World, TraceHitLocation, ProbeSize, 12, FColor::Red, false, -1.0f);
+				DrawDebugString(World, TraceHitLocation + FVector(0, 0, 20), TEXT("Hit"), nullptr, FColor::Red, 0.0f, true);
+			}
+			
+			// 绘制探针球体
+			DrawDebugSphere(World, DesiredLoc, ProbeSize, 12, FColor::Yellow, false, -1.0f);
+		}
+#endif
+
 		// 缓存结果
 		if (CollisionCacheTime > 0.0f)
 		{
-			PrivateData.CachedCollisionLocation = TraceHitLocation;
-			PrivateData.bCachedCollisionHit = bHitSomething;
-			PrivateData.CollisionCacheExpireTime = CurrentTime + CollisionCacheTime;
+			CachedCollisionLocation = TraceHitLocation;
+			bCachedCollisionHit = bHitSomething;
+			CollisionCacheExpireTime = CurrentTime + CollisionCacheTime;
 		}
 	}
 	else
 	{
 		// 使用缓存结果
-		bHitSomething = PrivateData.bCachedCollisionHit;
-		TraceHitLocation = PrivateData.CachedCollisionLocation;
+		bHitSomething = bCachedCollisionHit;
+		TraceHitLocation = CachedCollisionLocation;
 	}
 
 	UnfixedCameraPosition = DesiredLoc;
@@ -334,7 +328,7 @@ FVector FNamiSpringArm::BlendLocations(const FVector &DesiredArmLocation, const 
 }
 
 FNamiSpringArm::FNamiSpringArm()
-	: UnfixedCameraPosition(), PreviousDesiredLoc(), PreviousArmOrigin(), PreviousDesiredRot(), bEnableCameraLag(false), bEnableCameraRotationLag(false), bUseCameraLagSubstepping(true), bDrawDebugLagMarkers(0), CameraLagSpeed(10.f), CameraRotationLagSpeed(10.f), CameraLagMaxTimeStep(1.f / 60.f), CameraLagMaxDistance(0.f), bClampToMaxPhysicsDeltaTime(false)
+	: UnfixedCameraPosition(), PreviousDesiredLoc(), PreviousArmOrigin(), PreviousDesiredRot(), bEnableCameraLag(false), bEnableCameraRotationLag(false), bUseCameraLagSubstepping(true), bDrawDebugLagMarkers(0), CameraLagSpeed(10.f), CameraRotationLagSpeed(10.f), CameraLagMaxTimeStep(1.f / 60.f), CameraLagMaxDistance(0.f), bClampToMaxPhysicsDeltaTime(false), bDrawDebugCollision(false)
 {
 }
 
@@ -344,13 +338,12 @@ void FNamiSpringArm::Initialize()
 	StateIsValid = false;
 
 	// 初始化私有数据
-	FNamiSpringArmPrivate &PrivateData = GetPrivateData(this);
-	PrivateData.LastCollisionCheckTime = 0.0f;
-	PrivateData.CachedCollisionLocation = FVector::ZeroVector;
-	PrivateData.bCachedCollisionHit = false;
-	PrivateData.CollisionCacheExpireTime = 0.0f;
-	PrivateData.CollisionRecoveryVelocity = FVector::ZeroVector;
-	PrivateData.CurrentCollisionRecoveryLocation = FVector::ZeroVector;
+	LastCollisionCheckTime = 0.0f;
+	CachedCollisionLocation = FVector::ZeroVector;
+	bCachedCollisionHit = false;
+	CollisionCacheExpireTime = 0.0f;
+	CollisionRecoveryVelocity = FVector::ZeroVector;
+	CurrentCollisionRecoveryLocation = FVector::ZeroVector;
 }
 
 void FNamiSpringArm::Tick(const UObject *WorldContext, float DeltaTime, const AActor *IgnoreActor, const FTransform &InitialTransform, const FVector OffsetLocation)

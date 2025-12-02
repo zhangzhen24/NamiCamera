@@ -36,7 +36,7 @@ UNamiCameraComponent::UNamiCameraComponent(const FObjectInitializer& ObjectIniti
 {
 	bWantsInitializeComponent = true;
 	PrimaryComponentTick.bCanEverTick = true;
-	DefaultCameraMode = UNamiCameraModeBase::StaticClass();
+	DefaultCameraMode = nullptr; // 用户应该在 Blueprint 或 C++ 中显式设置
 
 	CameraModeInstancePool.Empty();
 	CameraModePriorityStack.Empty();
@@ -59,9 +59,16 @@ void UNamiCameraComponent::BeginPlay()
 		return;
 	}
 	OnPushCameraMode.AddDynamic(this, &ThisClass::NotifyCameraModeInitialize);
+	
+	// 检查并推送默认相机模式
 	if (IsValid(DefaultCameraMode))
 	{
 		PushCameraMode(DefaultCameraMode);
+	}
+	else
+	{
+		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraComponent::BeginPlay] DefaultCameraMode is not set for %s. Please set a valid camera mode in Blueprint or C++."), 
+			*GetOwner()->GetName());
 	}
 }
 

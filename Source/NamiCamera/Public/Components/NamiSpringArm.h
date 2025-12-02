@@ -172,5 +172,29 @@ public:
 	uint32 bClampToMaxPhysicsDeltaTime : 1;
 
 #pragma endregion
+
+#pragma region Collision Debug
+
+public:
+	/** 是否绘制碰撞检测调试信息（射线、碰撞点等） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=CameraCollision)
+	uint32 bDrawDebugCollision : 1;
+
+#pragma endregion
+
+private:
+	/** 上次碰撞检测时间 */
+	float LastCollisionCheckTime = 0.0f;
+
+	/** 碰撞检测结果缓存 */
+	FVector CachedCollisionLocation = FVector::ZeroVector;
+	bool bCachedCollisionHit = false;
+	float CollisionCacheExpireTime = 0.0f;
+
+	/** 碰撞恢复平滑速度 */
+	FVector CollisionRecoveryVelocity = FVector::ZeroVector;
+
+	/** 当前碰撞恢复位置 */
+	FVector CurrentCollisionRecoveryLocation = FVector::ZeroVector;
 };
 

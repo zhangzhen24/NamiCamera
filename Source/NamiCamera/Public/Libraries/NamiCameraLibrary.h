@@ -11,6 +11,10 @@ class AActor;
 class UNamiCameraComponent;
 class UNamiCameraModeBase;
 class UNamiTopDownCamera;
+class UNamiThirdPersonCamera;
+
+// 前向声明枚举
+enum class ENamiThirdPersonCameraPreset : uint8;
 
 /**
  * 相机工具库
@@ -92,5 +96,48 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Nami Camera|Library",
 		meta = (CallInEditor = "true"))
 	static UNamiCameraModeBase* GetActiveCameraModeFromActor(const AActor* Actor);
+	
+	// ========== 快捷配置方法 ==========
+	
+	/**
+	 * 快速设置第三人称相机距离
+	 * @param Actor 目标Actor
+	 * @param Distance 相机距离
+	 * @return 是否成功设置
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Library|Quick Config",
+		meta = (CallInEditor = "true"))
+	static bool SetThirdPersonCameraDistance(const AActor* Actor, float Distance);
+	
+	/**
+	 * 快速设置第三人称相机碰撞检测
+	 * @param Actor 目标Actor
+	 * @param bEnabled 是否启用
+	 * @return 是否成功设置
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Library|Quick Config",
+		meta = (CallInEditor = "true"))
+	static bool SetThirdPersonCameraCollision(const AActor* Actor, bool bEnabled);
+	
+	/**
+	 * 快速设置第三人称相机滞后
+	 * @param Actor 目标Actor
+	 * @param bEnabled 是否启用
+	 * @param LagSpeed 滞后速度
+	 * @return 是否成功设置
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Library|Quick Config",
+		meta = (CallInEditor = "true"))
+	static bool SetThirdPersonCameraLag(const AActor* Actor, bool bEnabled, float LagSpeed = 10.0f);
+	
+	/**
+	 * 应用第三人称相机预设
+	 * @param Actor 目标Actor
+	 * @param Preset 预设类型
+	 * @return 是否成功应用
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Library|Quick Config",
+		meta = (CallInEditor = "true"))
+	static bool ApplyThirdPersonCameraPreset(const AActor* Actor, ENamiThirdPersonCameraPreset Preset);
 };
 

@@ -7,6 +7,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/NamiCameraComponent.h"
 #include "Libraries/NamiCameraMath.h"
+#include "Features/NamiSpringArmFeature.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiThirdPersonCamera)
 
@@ -30,30 +31,70 @@ UNamiThirdPersonCamera::UNamiThirdPersonCamera()
 	CameraLocationSmoothIntensity = 0.0f;
 	CameraRotationSmoothIntensity = 0.0f;
 
-	// 初始化 SpringArm 配置（标准第三人称相机默认值）
-	SpringArm.TargetArmLength = 350.0f;
-	SpringArm.bDoCollisionTest = true;
-	SpringArm.ProbeSize = 12.0f;
-	SpringArm.ProbeChannel = ECC_Camera;
-
 	// 初始化旋转
 	LastCameraRotation = FRotator::ZeroRotator;
+	LastValidControlRotation = FRotator::ZeroRotator;
 }
 
 void UNamiThirdPersonCamera::Initialize_Implementation(UNamiCameraComponent *InCameraComponent)
 {
 	Super::Initialize_Implementation(InCameraComponent);
 
-	// 初始化 SpringArm
-	SpringArm.Initialize();
+	// 确保有 SpringArmFeature
+	UNamiSpringArmFeature* Feature = GetFeature<UNamiSpringArmFeature>();
+	if (!Feature)
+	{
+		// 自动创建 SpringArmFeature
+		Feature = CreateAndAddFeature<UNamiSpringArmFeature>();
+		if (Feature)
+		{
+			UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera::Initialize] 自动创建 SpringArmFeature。"));
+		}
+		else
+		{
+			UE_LOG(LogNamiCamera, Error, TEXT("[UNamiThirdPersonCamera::Initialize] 创建 SpringArmFeature 失败！"));
+			return;
+		}
+	}
+	
+	// 同步快捷配置到 SpringArmFeature
+	SyncQuickConfigToFeature();
+}
+
+void UNamiThirdPersonCamera::SyncQuickConfigToFeature()
+{
+	UNamiSpringArmFeature* Feature = GetSpringArmFeature();
+	if (!Feature)
+	{
+		return;
+	}
+	
+	// 同步相机距离
+	Feature->SpringArm.TargetArmLength = CameraDistance;
+	
+	// 同步碰撞检测
+	Feature->SpringArm.bDoCollisionTest = bEnableCollision;
+	
+	// 同步相机滞后
+	Feature->SpringArm.bEnableCameraLag = bEnableCameraLag;
+	Feature->SpringArm.CameraLagSpeed = CameraLagSpeed;
+	
+	// 设置其他默认值（如果还没设置）
+	if (Feature->SpringArm.ProbeSize == 0.0f)
+	{
+		Feature->SpringArm.ProbeSize = 12.0f;
+	}
+	if (Feature->SpringArm.ProbeChannel == ECC_WorldStatic)
+	{
+		Feature->SpringArm.ProbeChannel = ECC_Camera;
+	}
 }
 
 void UNamiThirdPersonCamera::Activate_Implementation()
 {
 	Super::Activate_Implementation();
-
-	// 重新初始化 SpringArm（激活时重置状态）
-	SpringArm.Initialize();
+	
+	// SpringArm 的激活由 Feature 系统自动处理
 }
 
 FNamiCameraView UNamiThirdPersonCamera::CalculateView_Implementation(float DeltaTime)
@@ -65,17 +106,9 @@ FNamiCameraView UNamiThirdPersonCamera::CalculateView_Implementation(float Delta
 	// 2. 获取控制旋转（相机旋转）
 	FRotator ControlRotation = GetControlRotation();
 
-	// 注意：鼠标灵敏度不应该应用在累积的控制旋转值上
-	// 灵敏度应该在输入阶段应用，否则会导致旋转值不断放大
-	// 移除这行代码，避免相机疯狂乱晃
-	// ControlRotation.Pitch *= MouseSensitivity;
-	// ControlRotation.Yaw *= MouseSensitivity;
-
 	// 应用Pitch限制
 	if (bLimitPitch)
 	{
-		// 使用FMath::ClampAngle而不是FMath::Clamp，因为ClampAngle会自动处理角度归一化
-		// 这可以避免UE坐标系中pitch瞬间变值导致的问题
 		ControlRotation.Pitch = FMath::ClampAngle(ControlRotation.Pitch, MinPitch, MaxPitch);
 	}
 
@@ -91,138 +124,53 @@ FNamiCameraView UNamiThirdPersonCamera::CalculateView_Implementation(float Delta
 		ControlRotation.Roll = 0.0f;
 	}
 
-	// 注意：在第三人称相机中，我们直接使用玩家的输入旋转
-	// 不需要使用目标旋转来覆盖玩家的输入
-	// bUseTargetRotation和bUseYawOnly属性在CalculateCameraLocation_Implementation中使用
-	// 但我们重写了CalculateView_Implementation，所以这些属性在这里不适用
+	// 3. 创建基础视图
+	FNamiCameraView View;
+	View.PivotLocation = TargetPivot;
+	View.CameraLocation = TargetPivot;  // 初始位置，将由 SpringArmFeature 修改
+	View.CameraRotation = ControlRotation;
+	View.ControlLocation = TargetPivot;
+	View.ControlRotation = ControlRotation;
+	View.FOV = DefaultFOV;
 
-	// 3. 准备 SpringArm 的输入
-	// 应用相机距离缩放因子
-	float ScaledArmLength = SpringArm.TargetArmLength * CameraDistanceScale;
-	SpringArm.TargetArmLength = ScaledArmLength;
-
-	FTransform InitialTransform(ControlRotation, TargetPivot);
-	FVector OffsetLocation = FVector::ZeroVector;
-
-	// 4. 准备忽略的Actor列表
-	TArray<AActor *> IgnoreActors;
-	AActor *PrimaryTarget = GetPrimaryTarget();
-	if (IsValid(PrimaryTarget))
+	// 4. 应用相机距离缩放因子到 SpringArmFeature
+	UNamiSpringArmFeature* SpringArmFeature = GetSpringArmFeature();
+	if (SpringArmFeature)
 	{
-		IgnoreActors.Add(PrimaryTarget);
-		// 忽略附加的Actor
-		PrimaryTarget->ForEachAttachedActors([&IgnoreActors](AActor *Actor)
-											 { IgnoreActors.AddUnique(Actor); return true; });
+		float OriginalArmLength = SpringArmFeature->SpringArm.TargetArmLength;
+		SpringArmFeature->SpringArm.TargetArmLength = OriginalArmLength * CameraDistanceScale;
 	}
 
-	// 5. 调用 SpringArm.Tick 计算相机位置
-	UWorld *World = GetWorld();
-	if (IsValid(World))
+	// 5. 调用父类实现，让 Feature 系统处理（包括 SpringArmFeature）
+	// Feature 系统会自动应用 SpringArm、VelocityPrediction 等功能
+	View = Super::CalculateView_Implementation(DeltaTime);
+
+	// 6. 恢复原始 ArmLength（避免影响下一帧）
+	if (SpringArmFeature)
 	{
-		SpringArm.Tick(World, DeltaTime, IgnoreActors, InitialTransform, OffsetLocation);
-
-		// 6. 从 SpringArm 获取最终相机Transform
-		FTransform CameraTransform = SpringArm.GetCameraTransform();
-		FRotator SpringArmRotation = CameraTransform.Rotator();
-
-		// 7. 创建 View
-		FNamiCameraView View;
-		View.PivotLocation = TargetPivot;
-		View.CameraLocation = CameraTransform.GetLocation();
-		// 使用SpringArm返回的旋转，而不是直接使用ControlRotation
-		// 这样可以确保相机旋转考虑了碰撞检测结果
-		View.CameraRotation = SpringArmRotation;
-		View.ControlLocation = CameraTransform.GetLocation();
-		View.ControlRotation = SpringArmRotation;
-		View.FOV = DefaultFOV;
-
-		// 8. 应用平滑（使用父类的平滑逻辑）
-		if (!bInitialized)
-		{
-			CurrentPivotLocation = View.PivotLocation;
-			CurrentCameraLocation = View.CameraLocation;
-			CurrentCameraRotation = View.CameraRotation;
-			bInitialized = true;
-		}
-		else if (DeltaTime > 0.0f)
-		{
-			// 平滑枢轴点
-			if (bEnableSmoothing && bEnablePivotSmoothing && PivotSmoothIntensity > 0.0f)
-			{
-				// 将平滑强度映射到实际平滑时间
-				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(PivotSmoothIntensity);
-				CurrentPivotLocation = FNamiCameraMath::SmoothDamp(
-					CurrentPivotLocation,
-					View.PivotLocation,
-					PivotVelocity,
-					SmoothTime,
-					DeltaTime);
-			}
-			else
-			{
-				CurrentPivotLocation = View.PivotLocation;
-			}
-
-			// 平滑相机位置
-			if (bEnableSmoothing && bEnableCameraLocationSmoothing && CameraLocationSmoothIntensity > 0.0f)
-			{
-				// 将平滑强度映射到实际平滑时间
-				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraLocationSmoothIntensity);
-				CurrentCameraLocation = FNamiCameraMath::SmoothDamp(
-					CurrentCameraLocation,
-					View.CameraLocation,
-					CameraVelocity,
-					SmoothTime,
-					DeltaTime);
-			}
-			else
-			{
-				CurrentCameraLocation = View.CameraLocation;
-			}
-
-			// 平滑旋转
-			if (bEnableSmoothing && bEnableCameraRotationSmoothing && CameraRotationSmoothIntensity > 0.0f)
-			{
-				// 将平滑强度映射到实际平滑时间
-				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraRotationSmoothIntensity);
-				CurrentCameraRotation = FNamiCameraMath::SmoothDampRotator(
-					CurrentCameraRotation,
-					View.CameraRotation,
-					YawVelocity,
-					PitchVelocity,
-					SmoothTime,
-					SmoothTime,
-					DeltaTime);
-			}
-			else
-			{
-				CurrentCameraRotation = View.CameraRotation;
-			}
-		}
-
-		// 9. 使用平滑后的值
-		View.PivotLocation = CurrentPivotLocation;
-		View.CameraLocation = CurrentCameraLocation;
-		View.CameraRotation = CurrentCameraRotation;
-		View.ControlLocation = CurrentCameraLocation;
-		View.ControlRotation = CurrentCameraRotation;
-
-		LastCameraRotation = View.CameraRotation;
-
-		return View;
+		SpringArmFeature->SpringArm.TargetArmLength = SpringArmFeature->SpringArm.TargetArmLength / CameraDistanceScale;
 	}
-	else
+
+	// 7. 重新应用旋转限制（因为 Feature 可能修改了旋转）
+	FRotator FinalRotation = View.CameraRotation;
+	if (bLimitPitch)
 	{
-		// World 无效时的后备方案：直接使用 PivotLocation 作为相机位置
-		FNamiCameraView View;
-		View.PivotLocation = TargetPivot;
-		View.CameraLocation = TargetPivot;
-		View.CameraRotation = ControlRotation;
-		View.ControlLocation = TargetPivot;
-		View.ControlRotation = ControlRotation;
-		View.FOV = DefaultFOV;
-		return View;
+		FinalRotation.Pitch = FMath::ClampAngle(FinalRotation.Pitch, MinPitch, MaxPitch);
 	}
+	if (bLimitYaw)
+	{
+		FinalRotation.Yaw = FMath::ClampAngle(FinalRotation.Yaw, MinYaw, MaxYaw);
+	}
+	if (bLockRoll)
+	{
+		FinalRotation.Roll = 0.0f;
+	}
+	View.CameraRotation = FinalRotation;
+	View.ControlRotation = FinalRotation;
+
+	LastCameraRotation = View.CameraRotation;
+
+	return View;
 }
 
 FVector UNamiThirdPersonCamera::CalculateCameraLocation_Implementation(const FVector &InPivotLocation) const
@@ -266,6 +214,128 @@ FRotator UNamiThirdPersonCamera::CalculateCameraRotation_Implementation(
 	return ControlRotation;
 }
 
+UNamiSpringArmFeature* UNamiThirdPersonCamera::GetSpringArmFeature() const
+{
+	return GetFeature<UNamiSpringArmFeature>();
+}
+
+void UNamiThirdPersonCamera::SetCameraDistance(float NewDistance)
+{
+	CameraDistance = FMath::Clamp(NewDistance, 50.0f, 2000.0f);
+	
+	// 同步到 SpringArmFeature
+	UNamiSpringArmFeature* Feature = GetSpringArmFeature();
+	if (Feature)
+	{
+		Feature->SpringArm.TargetArmLength = CameraDistance;
+	}
+}
+
+void UNamiThirdPersonCamera::SetCollisionEnabled(bool bEnabled)
+{
+	bEnableCollision = bEnabled;
+	
+	// 同步到 SpringArmFeature
+	UNamiSpringArmFeature* Feature = GetSpringArmFeature();
+	if (Feature)
+	{
+		Feature->SpringArm.bDoCollisionTest = bEnabled;
+	}
+}
+
+void UNamiThirdPersonCamera::SetCameraLag(bool bEnabled, float LagSpeed)
+{
+	bEnableCameraLag = bEnabled;
+	CameraLagSpeed = FMath::Clamp(LagSpeed, 0.0f, 100.0f);
+	
+	// 同步到 SpringArmFeature
+	UNamiSpringArmFeature* Feature = GetSpringArmFeature();
+	if (Feature)
+	{
+		Feature->SpringArm.bEnableCameraLag = bEnabled;
+		Feature->SpringArm.CameraLagSpeed = CameraLagSpeed;
+	}
+}
+
+void UNamiThirdPersonCamera::ApplyCameraPreset(ENamiThirdPersonCameraPreset Preset)
+{
+	CameraPreset = Preset;
+	
+	switch (Preset)
+	{
+	case ENamiThirdPersonCameraPreset::CloseCombat:
+		// 近距离战斗：快速响应，紧凑视角
+		SetCameraDistance(200.0f);
+		SetCollisionEnabled(true);
+		SetCameraLag(false, 15.0f);
+		MinPitch = -70.0f;
+		MaxPitch = 40.0f;
+		MouseSensitivity = 1.2f;
+		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera] 应用预设：近距离战斗"));
+		break;
+		
+	case ENamiThirdPersonCameraPreset::Standard:
+		// 标准第三人称：平衡的设置
+		SetCameraDistance(350.0f);
+		SetCollisionEnabled(true);
+		SetCameraLag(false, 10.0f);
+		MinPitch = -60.0f;
+		MaxPitch = 30.0f;
+		MouseSensitivity = 1.0f;
+		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera] 应用预设：标准第三人称"));
+		break;
+		
+	case ENamiThirdPersonCameraPreset::Exploration:
+		// 远距离探索：广阔视野，平滑移动
+		SetCameraDistance(650.0f);
+		SetCollisionEnabled(true);
+		SetCameraLag(true, 8.0f);
+		MinPitch = -50.0f;
+		MaxPitch = 20.0f;
+		MouseSensitivity = 0.9f;
+		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera] 应用预设：远距离探索"));
+		break;
+		
+	case ENamiThirdPersonCameraPreset::Cinematic:
+		// 电影感：平滑滞后，电影般的跟随
+		SetCameraDistance(450.0f);
+		SetCollisionEnabled(true);
+		SetCameraLag(true, 5.0f);
+		MinPitch = -55.0f;
+		MaxPitch = 25.0f;
+		MouseSensitivity = 0.8f;
+		// 启用父类的平滑
+		bEnableSmoothing = true;
+		PivotSmoothIntensity = 0.3f;
+		CameraLocationSmoothIntensity = 0.4f;
+		CameraRotationSmoothIntensity = 0.2f;
+		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera] 应用预设：电影感"));
+		break;
+		
+	case ENamiThirdPersonCameraPreset::Competitive:
+		// 竞技：精确控制，快速响应
+		SetCameraDistance(250.0f);
+		SetCollisionEnabled(true);
+		SetCameraLag(false, 20.0f);
+		MinPitch = -65.0f;
+		MaxPitch = 35.0f;
+		MouseSensitivity = 1.3f;
+		// 禁用平滑以获得最快响应
+		bEnableSmoothing = false;
+		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera] 应用预设：竞技"));
+		break;
+		
+	case ENamiThirdPersonCameraPreset::Custom:
+	default:
+		// 自定义：不修改任何参数
+		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera] 切换到自定义模式"));
+		break;
+	}
+	
+	// 同步所有配置到 Feature
+	SyncQuickConfigToFeature();
+}
+
 FRotator UNamiThirdPersonCamera::GetControlRotation() const
 {
 	// 从相机组件的 Owner 获取控制旋转
@@ -276,17 +346,22 @@ FRotator UNamiThirdPersonCamera::GetControlRotation() const
 		APawn *OwnerPawn = CameraComp->GetOwnerPawn();
 		if (IsValid(OwnerPawn))
 		{
-			return OwnerPawn->GetControlRotation();
+			FRotator ControlRot = OwnerPawn->GetControlRotation();
+			LastValidControlRotation = ControlRot; // 缓存有效旋转
+			return ControlRot;
 		}
 
 		// 尝试从 PlayerController 获取
 		APlayerController *PC = CameraComp->GetOwnerPlayerController();
 		if (IsValid(PC))
 		{
-			return PC->GetControlRotation();
+			FRotator ControlRot = PC->GetControlRotation();
+			LastValidControlRotation = ControlRot; // 缓存有效旋转
+			return ControlRot;
 		}
 	}
 
-	// 后备：返回默认旋转，避免使用可能导致循环依赖的变量
-	return FRotator::ZeroRotator;
+	// 后备：返回上一次有效的旋转，避免相机突然跳转
+	// 如果从未获取过有效旋转，则返回零旋转
+	return LastValidControlRotation;
 }
