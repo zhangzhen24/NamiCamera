@@ -4,6 +4,7 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Structs/State/NamiCameraFramingTypes.h"
 
 void UNamiCameraDebugLibrary::DrawCameraView(
 	const FNamiCameraView& View,
@@ -140,5 +141,77 @@ FString UNamiCameraDebugLibrary::GetCameraViewString(const FNamiCameraView& View
 		View.FOV,
 		(View.PivotLocation - View.CameraLocation).Size()
 	);
+}
+
+namespace
+{
+	void DrawRect(UWorld* World, const FVector& Origin, const FVector& X, const FVector& Y, const FVector& Extent, const FColor& Color, float Duration, float Thickness)
+	{
+		FVector P1 = Origin + X * Extent.X + Y * Extent.Y;
+		FVector P2 = Origin - X * Extent.X + Y * Extent.Y;
+		FVector P3 = Origin - X * Extent.X - Y * Extent.Y;
+		FVector P4 = Origin + X * Extent.X - Y * Extent.Y;
+
+		DrawDebugLine(World, P1, P2, Color, false, Duration, 0, Thickness);
+		DrawDebugLine(World, P2, P3, Color, false, Duration, 0, Thickness);
+		DrawDebugLine(World, P3, P4, Color, false, Duration, 0, Thickness);
+		DrawDebugLine(World, P4, P1, Color, false, Duration, 0, Thickness);
+	}
+}
+
+void UNamiCameraDebugLibrary::DrawFramingDebug(
+	UWorld* World,
+	const FVector& CameraLocation,
+	const FRotator& CameraRotation,
+	float FOV,
+	const FVector& FramingCenter,
+	float ArmLength,
+	const FVector2D& SafeZone,
+	const TArray<FVector>& Targets,
+	float Duration,
+	float Thickness)
+{
+	if (!IsValid(World))
+	{
+		return;
+	}
+
+	const float DrawDuration = Duration > 0.0f ? Duration : -1.0f;
+
+	// 绘制目标与中心
+	DrawDebugSphere(World, FramingCenter, 10.0f, 12, FColor::Green, false, DrawDuration, 0, Thickness);
+	for (const FVector& Pos : Targets)
+	{
+		DrawDebugSphere(World, Pos, 8.0f, 12, FColor::Yellow, false, DrawDuration, 0, Thickness);
+		DrawDebugLine(World, Pos, FramingCenter, FColor::Yellow, false, DrawDuration, 0, Thickness);
+	}
+
+	// 绘制相机到中心
+	DrawDebugLine(World, CameraLocation, FramingCenter, FColor::Cyan, false, DrawDuration, 0, Thickness);
+
+	// 以当前 FOV 和距离估算屏幕矩形并绘制安全区
+	const float Aspect = 16.0f / 9.0f;
+	const float Distance = FMath::Max(ArmLength, 100.0f);
+	const float HalfFovRad = FMath::DegreesToRadians(FMath::Max(1.0f, FOV * 0.5f));
+	const float HalfHeight = Distance * FMath::Tan(HalfFovRad);
+	const float HalfWidth = HalfHeight * Aspect;
+
+	const FVector Forward = CameraRotation.Vector();
+	const FVector Right = FRotationMatrix(CameraRotation).GetScaledAxis(EAxis::Y);
+	const FVector Up = FRotationMatrix(CameraRotation).GetScaledAxis(EAxis::Z);
+
+	const FVector PlaneOrigin = CameraLocation + Forward * Distance;
+
+	// 外框（近似视口）
+	DrawRect(World, PlaneOrigin, Right, Up, FVector(HalfWidth, HalfHeight, 0), FColor::Blue, DrawDuration, Thickness);
+
+	// 安全区（按 SafeZone 比例缩小）
+	const FVector SafeExtent = FVector(HalfWidth * (1.0f - SafeZone.X * 2.0f), HalfHeight * (1.0f - SafeZone.Y * 2.0f), 0);
+	DrawRect(World, PlaneOrigin, Right, Up, SafeExtent, FColor::Green, DrawDuration, Thickness);
+
+	// 文字
+	DrawDebugString(World, PlaneOrigin + Up * (HalfHeight + 20.0f), FString::Printf(TEXT("FOV: %.1f"), FOV),
+		nullptr, FColor::Magenta, DrawDuration, false, 1.0f);
+	DrawDebugString(World, FramingCenter + FVector(0, 0, 30.0f), TEXT("Framing Center"), nullptr, FColor::Green, DrawDuration, false, 1.0f);
 }
 

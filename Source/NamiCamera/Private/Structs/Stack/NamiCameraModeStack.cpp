@@ -92,7 +92,7 @@ void FNamiCameraModeStack::DumpCameraModeStack(const bool bPrintToScreen, const 
 		}
 		if (bPrintToLog)
 		{
-			UE_LOG(LogNamiCamera, Log, TEXT("%s"), *Message);
+			NAMI_LOG_STACK(Log, TEXT("%s"), *Message);
 		}
 		return;
 	}
@@ -127,7 +127,7 @@ void FNamiCameraModeStack::DumpCameraModeStack(const bool bPrintToScreen, const 
 		}
 		if (bPrintToLog)
 		{
-			UE_LOG(LogNamiCamera, Log, TEXT("%s"), *Message);
+			NAMI_LOG_STACK(Log, TEXT("%s"), *Message);
 		}
 	}
 }
@@ -185,17 +185,16 @@ void FNamiCameraModeStack::BlendStack(FNamiCameraView& OutCameraModeView) const
 		return;
 	}
 
-	// Get TopCameraMode's view
-	const UNamiCameraModeBase* CameraMode = CameraModeStack[StackSize - 1];
-	check(CameraMode);
-	OutCameraModeView = CameraMode->GetView();
+    // Get TopCameraMode's view
+    const UNamiCameraModeBase* CameraMode = CameraModeStack[StackSize - 1];
+    check(CameraMode);
+    OutCameraModeView = CameraMode->GetView();
 
 	// Blend other camera mode
-	for (int32 StackIndex = (StackSize - 2); StackIndex >= 0; --StackIndex)
-	{
-		CameraMode = CameraModeStack[StackIndex];
-		check(CameraMode);
-		OutCameraModeView.Blend(CameraMode->GetView(), CameraMode->GetBlendWeight());
-	}
+    for (int32 StackIndex = (StackSize - 2); StackIndex >= 0; --StackIndex)
+    {
+        CameraMode = CameraModeStack[StackIndex];
+        check(CameraMode);
+        OutCameraModeView.Blend(CameraMode->GetView(), CameraMode->GetBlendWeight());
+    }
 }
-

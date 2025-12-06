@@ -51,3 +51,59 @@ enum class ENamiFollowTargetType : uint8
 	Secondary UMETA(DisplayName = "辅助目标"),
 };
 
+/**
+ * 相机参数混合模式
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraBlendMode : uint8
+{
+	/** 叠加模式：在当前值基础上增加/减少 */
+	Additive UMETA(DisplayName = "叠加"),
+	
+	/** 覆盖模式：直接过渡到目标值 */
+	Override UMETA(DisplayName = "覆盖"),
+};
+
+/**
+ * 相机修改阶段
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraModifyStage : uint8
+{
+	/** 修改输入参数（在计算输出前） */
+	Input UMETA(DisplayName = "输入参数"),
+	
+	/** 修改输出结果（在计算输出后） */
+	Output UMETA(DisplayName = "输出结果"),
+};
+
+/**
+ * 视角控制模式
+ * 
+ * 定义当 Modifier 修改玩家视角时，如何处理玩家输入
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraControlMode : uint8
+{
+	/** 
+	 * 建议视角：玩家输入可打断
+	 * 当检测到玩家相机输入时，自动退出视角控制
+	 * 适用于：技能演出、轻量引导
+	 */
+	Suggestion UMETA(DisplayName = "建议视角"),
+	
+	/** 
+	 * 强制视角：玩家输入不可打断
+	 * 完全控制玩家视角，忽略玩家输入
+	 * 适用于：过场动画、QTE、剧情演出
+	 */
+	Forced UMETA(DisplayName = "强制视角"),
+	
+	/** 
+	 * 混合视角：玩家输入会衰减效果权重
+	 * 玩家输入越大，效果权重越低
+	 * 适用于：柔和的视角引导
+	 */
+	Blended UMETA(DisplayName = "混合视角"),
+};
+

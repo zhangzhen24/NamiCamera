@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "GameplayTagContainer.h"
 #include "Structs/View/NamiCameraView.h"
 #include "NamiCameraFeature.generated.h"
 
@@ -76,6 +77,38 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Camera Feature")
 	UNamiCameraModeBase* GetCameraMode() const { return CameraMode.Get(); }
 
+	// ========== GameplayTags ==========
+
+	/**
+	 * 添加 Tag
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Camera Feature|Tags")
+	void AddTag(const FGameplayTag& Tag) { Tags.AddTag(Tag); }
+
+	/**
+	 * 移除 Tag
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Camera Feature|Tags")
+	void RemoveTag(const FGameplayTag& Tag) { Tags.RemoveTag(Tag); }
+
+	/**
+	 * 检查是否包含 Tag
+	 */
+	UFUNCTION(BlueprintPure, Category = "Camera Feature|Tags")
+	bool HasTag(const FGameplayTag& Tag) const { return Tags.HasTag(Tag); }
+
+	/**
+	 * 检查是否包含任意 Tag
+	 */
+	UFUNCTION(BlueprintPure, Category = "Camera Feature|Tags")
+	bool HasAnyTag(const FGameplayTagContainer& TagContainer) const { return Tags.HasAny(TagContainer); }
+
+	/**
+	 * 检查是否包含所有 Tag
+	 */
+	UFUNCTION(BlueprintPure, Category = "Camera Feature|Tags")
+	bool HasAllTags(const FGameplayTagContainer& TagContainer) const { return Tags.HasAll(TagContainer); }
+
 public:
 	/** 功能名称 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Feature")
@@ -88,6 +121,10 @@ public:
 	/** 是否启用 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Feature")
 	bool bEnabled = true;
+
+	/** Gameplay Tags（用于标记和分类 Feature，类似 GAS 系统） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Feature")
+	FGameplayTagContainer Tags;
 
 protected:
 	/** 所属的相机模式 */

@@ -20,37 +20,69 @@ public:
 	// ========== 基础操作 ==========
 	
 	/**
-	 * 激活相机效果（使用预设）
+	 * 激活相机效果（兼容旧接口，使用StateModifier）
 	 * 
 	 * @param WorldContextObject 世界上下文对象
 	 * @param PlayerController 玩家控制器
-	 * @param Preset 效果预设
+	 * @param ModifierClass 修改器类（默认使用StateModifier）
 	 * @param EffectName 效果名称（用于调试和管理）
 	 * @return 创建的修改器实例
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
-			  meta = (WorldContext = "WorldContextObject", DisplayName = "激活相机效果（预设）"))
-	static class UNamiCameraEffectModifier* ActivateCameraEffect(
+			  meta = (WorldContext = "WorldContextObject", DisplayName = "激活相机效果（兼容）"))
+	static class UNamiCameraEffectModifierBase* ActivateCameraEffect(
 		UObject* WorldContextObject,
 		class APlayerController* PlayerController,
-		class UNamiCameraEffectPreset* Preset,
+		TSubclassOf<class UNamiCameraEffectModifierBase> ModifierClass = nullptr,
 		FName EffectName = NAME_None);
 	
 	/**
-	 * 激活自定义相机效果
+	 * 激活State修改器
 	 * 
 	 * @param WorldContextObject 世界上下文对象
 	 * @param PlayerController 玩家控制器
-	 * @param ModifierClass 自定义修改器类
 	 * @param EffectName 效果名称
-	 * @return 创建的修改器实例
+	 * @return 创建的State修改器实例
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
-			  meta = (WorldContext = "WorldContextObject", DisplayName = "激活相机效果（自定义）"))
-	static class UNamiCameraEffectModifier* ActivateCustomCameraEffect(
+			  meta = (WorldContext = "WorldContextObject", DisplayName = "激活State修改器"))
+	static class UNamiCameraStateModifier* ActivateStateModifier(
 		UObject* WorldContextObject,
 		class APlayerController* PlayerController,
-		TSubclassOf<class UNamiCameraEffectModifier> ModifierClass,
+		FName EffectName = NAME_None);
+	
+	/**
+	 * 激活震动修改器
+	 * 
+	 * @param WorldContextObject 世界上下文对象
+	 * @param PlayerController 玩家控制器
+	 * @param CameraShake 震动类
+	 * @param ShakeScale 震动强度
+	 * @param EffectName 效果名称
+	 * @return 创建的震动修改器实例
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
+			  meta = (WorldContext = "WorldContextObject", DisplayName = "激活震动修改器"))
+	static class UNamiCameraShakeModifier* ActivateShakeModifier(
+		UObject* WorldContextObject,
+		class APlayerController* PlayerController,
+		TSubclassOf<class UCameraShakeBase> CameraShake,
+		float ShakeScale = 1.0f,
+		FName EffectName = NAME_None);
+	
+	/**
+	 * 激活后处理修改器
+	 * 
+	 * @param WorldContextObject 世界上下文对象
+	 * @param PlayerController 玩家控制器
+	 * @param EffectName 效果名称
+	 * @return 创建的后处理修改器实例
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
+			  meta = (WorldContext = "WorldContextObject", DisplayName = "激活后处理修改器"))
+	static class UNamiCameraPostProcessModifier* ActivatePostProcessModifier(
+		UObject* WorldContextObject,
+		class APlayerController* PlayerController,
 		FName EffectName = NAME_None);
 	
 	/**
@@ -62,7 +94,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
 			  meta = (DisplayName = "停止相机效果"))
 	static void DeactivateCameraEffect(
-		class UNamiCameraEffectModifier* Modifier,
+		class UNamiCameraEffectModifierBase* Modifier,
 		bool bForceImmediate = false);
 	
 	/**
@@ -101,7 +133,7 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Nami Camera|Effect",
 			  meta = (DisplayName = "获取所有相机效果"))
-	static TArray<class UNamiCameraEffectModifier*> GetAllActiveCameraEffects(
+	static TArray<class UNamiCameraEffectModifierBase*> GetAllActiveCameraEffects(
 		class APlayerController* PlayerController);
 	
 	/**
@@ -113,7 +145,7 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Nami Camera|Effect",
 			  meta = (DisplayName = "查找相机效果"))
-	static class UNamiCameraEffectModifier* FindCameraEffectByName(
+	static class UNamiCameraEffectModifierBase* FindCameraEffectByName(
 		class APlayerController* PlayerController,
 		FName EffectName);
 	
@@ -130,31 +162,12 @@ public:
 	// ========== 参数调整 ==========
 	
 	/**
-	 * 设置效果的 LookAt 目标
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
-			  meta = (DisplayName = "设置 LookAt 目标"))
-	static void SetEffectLookAtTarget(
-		class UNamiCameraEffectModifier* Modifier,
-		AActor* Target,
-		FVector Offset = FVector::ZeroVector);
-	
-	/**
-	 * 设置效果的 LookAt 位置
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
-			  meta = (DisplayName = "设置 LookAt 位置"))
-	static void SetEffectLookAtLocation(
-		class UNamiCameraEffectModifier* Modifier,
-		FVector Location);
-	
-	/**
 	 * 设置效果的持续时间
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
 			  meta = (DisplayName = "设置效果持续时间"))
 	static void SetEffectDuration(
-		class UNamiCameraEffectModifier* Modifier,
+		class UNamiCameraEffectModifierBase* Modifier,
 		float NewDuration);
 	
 	/**
@@ -163,8 +176,29 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Effect",
 			  meta = (DisplayName = "设置效果混合时间"))
 	static void SetEffectBlendTime(
-		class UNamiCameraEffectModifier* Modifier,
+		class UNamiCameraEffectModifierBase* Modifier,
 		float BlendInTime,
 		float BlendOutTime);
+
+	// ========== 多目标构图（可选） ==========
+
+	/**
+	 * 为指定的 StateModifier 设置多目标构图目标
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Framing",
+			  meta = (DisplayName = "设置构图目标"))
+	static void SetFramingTargets(
+		class UNamiCameraStateModifier* StateModifier,
+		const TArray<AActor*>& Targets);
+
+	/**
+	 * 更新构图配置
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Framing",
+			  meta = (DisplayName = "更新构图配置"))
+	static void UpdateFramingConfig(
+		class UNamiCameraStateModifier* StateModifier,
+		const struct FNamiCameraFramingConfig& Config,
+		bool bEnableFraming);
 };
 

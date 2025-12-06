@@ -1,17 +1,21 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Libraries/NamiCameraEffectLibrary.h"
-#include "Modifiers/NamiCameraEffectModifier.h"
-#include "Data/NamiCameraEffectPreset.h"
+#include "Modifiers/NamiCameraEffectModifierBase.h"
+#include "Modifiers/NamiCameraStateModifier.h"
+#include "Modifiers/NamiCameraShakeModifier.h"
+#include "Modifiers/NamiCameraPostProcessModifier.h"
+#include "Structs/State/NamiCameraFramingTypes.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/NamiPlayerCameraManager.h"
 #include "LogNamiCamera.h"
+#include "LogNamiCameraMacros.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraEffectLibrary)
 
 // 静态映射：跟踪每个 PlayerController 的修改器
-static TMap<TWeakObjectPtr<APlayerController>, TArray<TWeakObjectPtr<UNamiCameraEffectModifier>>> ActiveModifiersMap;
+static TMap<TWeakObjectPtr<APlayerController>, TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>> ActiveModifiersMap;
 
 /**
  * 清理无效的引用
@@ -29,8 +33,8 @@ static void CleanupInvalidReferences()
 		}
 		
 		// 清理无效的修改器引用
-		TArray<TWeakObjectPtr<UNamiCameraEffectModifier>>& Modifiers = It.Value();
-		Modifiers.RemoveAll([](const TWeakObjectPtr<UNamiCameraEffectModifier>& Modifier)
+		TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>& Modifiers = It.Value();
+		Modifiers.RemoveAll([](const TWeakObjectPtr<UNamiCameraEffectModifierBase>& Modifier)
 		{
 			return !Modifier.IsValid();
 		});
@@ -43,30 +47,33 @@ static void CleanupInvalidReferences()
 	}
 }
 
-UNamiCameraEffectModifier* UNamiCameraEffectLibrary::ActivateCameraEffect(
+UNamiCameraEffectModifierBase* UNamiCameraEffectLibrary::ActivateCameraEffect(
 	UObject* WorldContextObject,
 	APlayerController* PlayerController,
-	UNamiCameraEffectPreset* Preset,
+	TSubclassOf<UNamiCameraEffectModifierBase> ModifierClass,
 	FName EffectName)
 {
-	if (!PlayerController || !Preset)
+	if (!PlayerController)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: PlayerController 或 Preset 为空"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: PlayerController 为空"));
 		return nullptr;
 	}
 	
 	APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
 	if (!CameraManager)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: 无法获取 PlayerCameraManager"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: 无法获取 PlayerCameraManager"));
 		return nullptr;
 	}
 	
-	// 使用预设创建修改器
-	UNamiCameraEffectModifier* Modifier = Preset->CreateModifier(CameraManager);
+	// 如果没有指定类，使用StateModifier作为默认
+	UClass* ClassToUse = ModifierClass ? ModifierClass.Get() : UNamiCameraStateModifier::StaticClass();
+	
+	// 创建修改器
+	UNamiCameraEffectModifierBase* Modifier = NewObject<UNamiCameraEffectModifierBase>(CameraManager, ClassToUse);
 	if (!Modifier)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: 创建修改器失败"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: 创建修改器失败"));
 		return nullptr;
 	}
 	
@@ -85,7 +92,7 @@ UNamiCameraEffectModifier* UNamiCameraEffectLibrary::ActivateCameraEffect(
 	else
 	{
 		// 如果不是 NamiPlayerCameraManager，使用反射或其他方式
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: 不是 ANamiPlayerCameraManager，无法添加修改器"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateCameraEffect: 不是 ANamiPlayerCameraManager，无法添加修改器"));
 		return nullptr;
 	}
 	
@@ -96,40 +103,39 @@ UNamiCameraEffectModifier* UNamiCameraEffectLibrary::ActivateCameraEffect(
 	TWeakObjectPtr<APlayerController> PCWeak(PlayerController);
 	if (!ActiveModifiersMap.Contains(PCWeak))
 	{
-		ActiveModifiersMap.Add(PCWeak, TArray<TWeakObjectPtr<UNamiCameraEffectModifier>>());
+		ActiveModifiersMap.Add(PCWeak, TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>());
 	}
 	ActiveModifiersMap[PCWeak].Add(Modifier);
 	
-	UE_LOG(LogNamiCamera, Log, TEXT("[UNamiCameraEffectLibrary] 激活相机效果：%s（预设：%s），修改器：%s"), 
-		*EffectName.ToString(), *Preset->GetName(), *Modifier->GetName());
+	NAMI_LOG_LIBRARY(Log, TEXT("[UNamiCameraEffectLibrary] 激活相机效果：%s，修改器：%s"), 
+		*EffectName.ToString(), *Modifier->GetName());
 	
 	return Modifier;
 }
 
-UNamiCameraEffectModifier* UNamiCameraEffectLibrary::ActivateCustomCameraEffect(
+UNamiCameraStateModifier* UNamiCameraEffectLibrary::ActivateStateModifier(
 	UObject* WorldContextObject,
 	APlayerController* PlayerController,
-	TSubclassOf<UNamiCameraEffectModifier> ModifierClass,
 	FName EffectName)
 {
-	if (!PlayerController || !ModifierClass)
+	if (!PlayerController)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCustomCameraEffect: PlayerController 或 ModifierClass 为空"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateStateModifier: PlayerController 为空"));
 		return nullptr;
 	}
 	
 	APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
 	if (!CameraManager)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCustomCameraEffect: 无法获取 PlayerCameraManager"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateStateModifier: 无法获取 PlayerCameraManager"));
 		return nullptr;
 	}
 	
-	// 创建自定义修改器
-	UNamiCameraEffectModifier* Modifier = NewObject<UNamiCameraEffectModifier>(CameraManager, ModifierClass);
+	// 创建State修改器
+	UNamiCameraStateModifier* Modifier = NewObject<UNamiCameraStateModifier>(CameraManager);
 	if (!Modifier)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCustomCameraEffect: 创建修改器失败"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateStateModifier: 创建修改器失败"));
 		return nullptr;
 	}
 	
@@ -139,37 +145,153 @@ UNamiCameraEffectModifier* UNamiCameraEffectLibrary::ActivateCustomCameraEffect(
 		Modifier->EffectName = EffectName;
 	}
 	
-	// 添加到相机管理器（尝试使用 NamiPlayerCameraManager 的公共方法）
+	// 添加到相机管理器
 	ANamiPlayerCameraManager* NamiCameraManager = Cast<ANamiPlayerCameraManager>(CameraManager);
 	if (NamiCameraManager)
 	{
 		NamiCameraManager->AddCameraModifier(Modifier);
+		Modifier->ActivateEffect(false);
+		
+		// 添加到跟踪映射
+		TWeakObjectPtr<APlayerController> PCWeak(PlayerController);
+		if (!ActiveModifiersMap.Contains(PCWeak))
+		{
+			ActiveModifiersMap.Add(PCWeak, TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>());
+		}
+		ActiveModifiersMap[PCWeak].Add(Modifier);
+		
+		NAMI_LOG_LIBRARY(Log, TEXT("[UNamiCameraEffectLibrary] 激活State修改器：%s"), 
+			*EffectName.ToString());
+		
+		return Modifier;
 	}
-	else
+	
+	NAMI_LOG_WARNING(TEXT("[UNamiCameraEffectLibrary] ActivateStateModifier: 不是 ANamiPlayerCameraManager"));
+	return nullptr;
+}
+
+UNamiCameraShakeModifier* UNamiCameraEffectLibrary::ActivateShakeModifier(
+	UObject* WorldContextObject,
+	APlayerController* PlayerController,
+	TSubclassOf<UCameraShakeBase> CameraShake,
+	float ShakeScale,
+	FName EffectName)
+{
+	if (!PlayerController || !CameraShake)
 	{
-		// 如果不是 NamiPlayerCameraManager，使用反射或其他方式
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] ActivateCustomCameraEffect: 不是 ANamiPlayerCameraManager，无法添加修改器"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateShakeModifier: 参数无效"));
 		return nullptr;
 	}
 	
-	// 激活效果
-	Modifier->ActivateEffect(false);
-	
-	// 添加到跟踪映射
-	TWeakObjectPtr<APlayerController> PCWeak(PlayerController);
-	if (!ActiveModifiersMap.Contains(PCWeak))
+	APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
+	if (!CameraManager)
 	{
-		ActiveModifiersMap.Add(PCWeak, TArray<TWeakObjectPtr<UNamiCameraEffectModifier>>());
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateShakeModifier: 无法获取 PlayerCameraManager"));
+		return nullptr;
 	}
-	ActiveModifiersMap[PCWeak].Add(Modifier);
 	
-	UE_LOG(LogNamiCamera, Log, TEXT("[UNamiCameraEffectLibrary] 激活自定义相机效果：%s，修改器类：%s"), 
-		*EffectName.ToString(), *ModifierClass->GetName());
+	// 创建震动修改器
+	UNamiCameraShakeModifier* Modifier = NewObject<UNamiCameraShakeModifier>(CameraManager);
+	if (!Modifier)
+	{
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivateShakeModifier: 创建修改器失败"));
+		return nullptr;
+	}
 	
-	return Modifier;
+	// 配置震动
+	Modifier->CameraShake = CameraShake;
+	Modifier->ShakeScale = ShakeScale;
+	Modifier->bPlayShakeOnStart = true;
+	
+	// 设置效果名称
+	if (!EffectName.IsNone())
+	{
+		Modifier->EffectName = EffectName;
+	}
+	
+	// 添加到相机管理器
+	ANamiPlayerCameraManager* NamiCameraManager = Cast<ANamiPlayerCameraManager>(CameraManager);
+	if (NamiCameraManager)
+	{
+		NamiCameraManager->AddCameraModifier(Modifier);
+		Modifier->ActivateEffect(false);
+		
+		// 添加到跟踪映射
+		TWeakObjectPtr<APlayerController> PCWeak(PlayerController);
+		if (!ActiveModifiersMap.Contains(PCWeak))
+		{
+			ActiveModifiersMap.Add(PCWeak, TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>());
+		}
+		ActiveModifiersMap[PCWeak].Add(Modifier);
+		
+		NAMI_LOG_LIBRARY(Log, TEXT("[UNamiCameraEffectLibrary] 激活震动修改器：%s，震动：%s，强度：%.2f"), 
+			*EffectName.ToString(), *CameraShake->GetName(), ShakeScale);
+		
+		return Modifier;
+	}
+	
+	NAMI_LOG_WARNING(TEXT("[UNamiCameraEffectLibrary] ActivateShakeModifier: 不是 ANamiPlayerCameraManager"));
+	return nullptr;
 }
 
-void UNamiCameraEffectLibrary::DeactivateCameraEffect(UNamiCameraEffectModifier* Modifier, bool bForceImmediate)
+UNamiCameraPostProcessModifier* UNamiCameraEffectLibrary::ActivatePostProcessModifier(
+	UObject* WorldContextObject,
+	APlayerController* PlayerController,
+	FName EffectName)
+{
+	if (!PlayerController)
+	{
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivatePostProcessModifier: PlayerController 为空"));
+		return nullptr;
+	}
+	
+	APlayerCameraManager* CameraManager = PlayerController->PlayerCameraManager;
+	if (!CameraManager)
+	{
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivatePostProcessModifier: 无法获取 PlayerCameraManager"));
+		return nullptr;
+	}
+	
+	// 创建后处理修改器
+	UNamiCameraPostProcessModifier* Modifier = NewObject<UNamiCameraPostProcessModifier>(CameraManager);
+	if (!Modifier)
+	{
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] ActivatePostProcessModifier: 创建修改器失败"));
+		return nullptr;
+	}
+	
+	// 设置效果名称
+	if (!EffectName.IsNone())
+	{
+		Modifier->EffectName = EffectName;
+	}
+	
+	// 添加到相机管理器
+	ANamiPlayerCameraManager* NamiCameraManager = Cast<ANamiPlayerCameraManager>(CameraManager);
+	if (NamiCameraManager)
+	{
+		NamiCameraManager->AddCameraModifier(Modifier);
+		Modifier->ActivateEffect(false);
+		
+		// 添加到跟踪映射
+		TWeakObjectPtr<APlayerController> PCWeak(PlayerController);
+		if (!ActiveModifiersMap.Contains(PCWeak))
+		{
+			ActiveModifiersMap.Add(PCWeak, TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>());
+		}
+		ActiveModifiersMap[PCWeak].Add(Modifier);
+		
+		NAMI_LOG_LIBRARY(Log, TEXT("[UNamiCameraEffectLibrary] 激活后处理修改器：%s"), 
+			*EffectName.ToString());
+		
+		return Modifier;
+	}
+	
+	NAMI_LOG_WARNING(TEXT("[UNamiCameraEffectLibrary] ActivatePostProcessModifier: 不是 ANamiPlayerCameraManager"));
+	return nullptr;
+}
+
+void UNamiCameraEffectLibrary::DeactivateCameraEffect(UNamiCameraEffectModifierBase* Modifier, bool bForceImmediate)
 {
 	if (!Modifier)
 	{
@@ -189,7 +311,7 @@ void UNamiCameraEffectLibrary::DeactivateCameraEffect(UNamiCameraEffectModifier*
 				continue;
 			}
 			
-			TArray<TWeakObjectPtr<UNamiCameraEffectModifier>>& Modifiers = Pair.Value;
+			TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>& Modifiers = Pair.Value;
 			if (Modifiers.Contains(Modifier))
 			{
 				// 找到对应的 PlayerController，移除修改器
@@ -200,7 +322,7 @@ void UNamiCameraEffectLibrary::DeactivateCameraEffect(UNamiCameraEffectModifier*
 				}
 				
 				// 从映射中移除
-				Modifiers.RemoveAll([Modifier](const TWeakObjectPtr<UNamiCameraEffectModifier>& M)
+				Modifiers.RemoveAll([Modifier](const TWeakObjectPtr<UNamiCameraEffectModifierBase>& M)
 				{
 					return M.Get() == Modifier;
 				});
@@ -222,21 +344,21 @@ void UNamiCameraEffectLibrary::DeactivateAllCameraEffects(APlayerController* Pla
 {
 	if (!PlayerController)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] DeactivateAllCameraEffects: PlayerController 为空"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] DeactivateAllCameraEffects: PlayerController 为空"));
 		return;
 	}
 	
 	// 获取所有相机效果
-	TArray<UNamiCameraEffectModifier*> Effects = GetAllActiveCameraEffects(PlayerController);
+	TArray<UNamiCameraEffectModifierBase*> Effects = GetAllActiveCameraEffects(PlayerController);
 	
 	if (Effects.Num() == 0)
 	{
-		UE_LOG(LogNamiCamera, Verbose, TEXT("[UNamiCameraEffectLibrary] DeactivateAllCameraEffects: 没有激活的相机效果"));
+		NAMI_LOG_LIBRARY(Verbose, TEXT("[UNamiCameraEffectLibrary] DeactivateAllCameraEffects: 没有激活的相机效果"));
 		return;
 	}
 	
 	// 停止所有效果
-	for (UNamiCameraEffectModifier* Effect : Effects)
+	for (UNamiCameraEffectModifierBase* Effect : Effects)
 	{
 		if (Effect)
 		{
@@ -251,7 +373,7 @@ void UNamiCameraEffectLibrary::DeactivateAllCameraEffects(APlayerController* Pla
 		ActiveModifiersMap.Remove(PCWeak);
 	}
 	
-	UE_LOG(LogNamiCamera, Log, TEXT("[UNamiCameraEffectLibrary] 停止所有相机效果，数量：%d，立即：%s"), 
+	NAMI_LOG_LIBRARY(Log, TEXT("[UNamiCameraEffectLibrary] 停止所有相机效果，数量：%d，立即：%s"), 
 		Effects.Num(), bForceImmediate ? TEXT("是") : TEXT("否"));
 }
 
@@ -259,33 +381,33 @@ void UNamiCameraEffectLibrary::DeactivateCameraEffectByName(APlayerController* P
 {
 	if (!PlayerController)
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] DeactivateCameraEffectByName: PlayerController 为空"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] DeactivateCameraEffectByName: PlayerController 为空"));
 		return;
 	}
 	
 	if (EffectName.IsNone())
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] DeactivateCameraEffectByName: EffectName 为空"));
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] DeactivateCameraEffectByName: EffectName 为空"));
 		return;
 	}
 	
-	UNamiCameraEffectModifier* Effect = FindCameraEffectByName(PlayerController, EffectName);
+	UNamiCameraEffectModifierBase* Effect = FindCameraEffectByName(PlayerController, EffectName);
 	if (Effect)
 	{
 		Effect->DeactivateEffect(bForceImmediate);
-		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiCameraEffectLibrary] 按名称停止相机效果：%s，立即：%s"), 
+		NAMI_LOG_LIBRARY(Log, TEXT("[UNamiCameraEffectLibrary] 按名称停止相机效果：%s，立即：%s"), 
 			*EffectName.ToString(), bForceImmediate ? TEXT("是") : TEXT("否"));
 	}
 	else
 	{
-		UE_LOG(LogNamiCamera, Warning, TEXT("[UNamiCameraEffectLibrary] DeactivateCameraEffectByName: 未找到效果：%s"), 
+		NAMI_LOG_WARNING( TEXT("[UNamiCameraEffectLibrary] DeactivateCameraEffectByName: 未找到效果：%s"), 
 			*EffectName.ToString());
 	}
 }
 
-TArray<UNamiCameraEffectModifier*> UNamiCameraEffectLibrary::GetAllActiveCameraEffects(APlayerController* PlayerController)
+TArray<UNamiCameraEffectModifierBase*> UNamiCameraEffectLibrary::GetAllActiveCameraEffects(APlayerController* PlayerController)
 {
-	TArray<UNamiCameraEffectModifier*> Results;
+	TArray<UNamiCameraEffectModifierBase*> Results;
 	
 	if (!PlayerController)
 	{
@@ -304,10 +426,10 @@ TArray<UNamiCameraEffectModifier*> UNamiCameraEffectLibrary::GetAllActiveCameraE
 	TWeakObjectPtr<APlayerController> PCWeak(PlayerController);
 	if (ActiveModifiersMap.Contains(PCWeak))
 	{
-		TArray<TWeakObjectPtr<UNamiCameraEffectModifier>>& Modifiers = ActiveModifiersMap[PCWeak];
+		TArray<TWeakObjectPtr<UNamiCameraEffectModifierBase>>& Modifiers = ActiveModifiersMap[PCWeak];
 		
 		// 收集有效的激活修改器
-		for (const TWeakObjectPtr<UNamiCameraEffectModifier>& Modifier : Modifiers)
+		for (const TWeakObjectPtr<UNamiCameraEffectModifierBase>& Modifier : Modifiers)
 		{
 			if (Modifier.IsValid() && Modifier->IsActive())
 			{
@@ -316,7 +438,7 @@ TArray<UNamiCameraEffectModifier*> UNamiCameraEffectLibrary::GetAllActiveCameraE
 		}
 		
 		// 清理当前 PlayerController 的无效引用
-		Modifiers.RemoveAll([](const TWeakObjectPtr<UNamiCameraEffectModifier>& Modifier)
+		Modifiers.RemoveAll([](const TWeakObjectPtr<UNamiCameraEffectModifierBase>& Modifier)
 		{
 			return !Modifier.IsValid();
 		});
@@ -331,16 +453,16 @@ TArray<UNamiCameraEffectModifier*> UNamiCameraEffectLibrary::GetAllActiveCameraE
 	return Results;
 }
 
-UNamiCameraEffectModifier* UNamiCameraEffectLibrary::FindCameraEffectByName(APlayerController* PlayerController, FName EffectName)
+UNamiCameraEffectModifierBase* UNamiCameraEffectLibrary::FindCameraEffectByName(APlayerController* PlayerController, FName EffectName)
 {
 	if (!PlayerController || EffectName.IsNone())
 	{
 		return nullptr;
 	}
 	
-	TArray<UNamiCameraEffectModifier*> Effects = GetAllActiveCameraEffects(PlayerController);
+	TArray<UNamiCameraEffectModifierBase*> Effects = GetAllActiveCameraEffects(PlayerController);
 	
-	for (UNamiCameraEffectModifier* Effect : Effects)
+	for (UNamiCameraEffectModifierBase* Effect : Effects)
 	{
 		if (Effect && Effect->EffectName == EffectName)
 		{
@@ -353,31 +475,11 @@ UNamiCameraEffectModifier* UNamiCameraEffectLibrary::FindCameraEffectByName(APla
 
 bool UNamiCameraEffectLibrary::HasActiveCameraEffects(APlayerController* PlayerController)
 {
-	TArray<UNamiCameraEffectModifier*> Effects = GetAllActiveCameraEffects(PlayerController);
+	TArray<UNamiCameraEffectModifierBase*> Effects = GetAllActiveCameraEffects(PlayerController);
 	return Effects.Num() > 0;
 }
 
-void UNamiCameraEffectLibrary::SetEffectLookAtTarget(UNamiCameraEffectModifier* Modifier, AActor* Target, FVector Offset)
-{
-	if (!Modifier)
-	{
-		return;
-	}
-	
-	Modifier->SetLookAtTarget(Target, Offset);
-}
-
-void UNamiCameraEffectLibrary::SetEffectLookAtLocation(UNamiCameraEffectModifier* Modifier, FVector Location)
-{
-	if (!Modifier)
-	{
-		return;
-	}
-	
-	Modifier->SetLookAtLocation(Location);
-}
-
-void UNamiCameraEffectLibrary::SetEffectDuration(UNamiCameraEffectModifier* Modifier, float NewDuration)
+void UNamiCameraEffectLibrary::SetEffectDuration(UNamiCameraEffectModifierBase* Modifier, float NewDuration)
 {
 	if (!Modifier)
 	{
@@ -387,7 +489,7 @@ void UNamiCameraEffectLibrary::SetEffectDuration(UNamiCameraEffectModifier* Modi
 	Modifier->Duration = NewDuration;
 }
 
-void UNamiCameraEffectLibrary::SetEffectBlendTime(UNamiCameraEffectModifier* Modifier, float BlendInTime, float BlendOutTime)
+void UNamiCameraEffectLibrary::SetEffectBlendTime(UNamiCameraEffectModifierBase* Modifier, float BlendInTime, float BlendOutTime)
 {
 	if (!Modifier)
 	{
@@ -396,5 +498,26 @@ void UNamiCameraEffectLibrary::SetEffectBlendTime(UNamiCameraEffectModifier* Mod
 	
 	Modifier->BlendInTime = BlendInTime;
 	Modifier->BlendOutTime = BlendOutTime;
+}
+
+void UNamiCameraEffectLibrary::SetFramingTargets(UNamiCameraStateModifier* StateModifier, const TArray<AActor*>& Targets)
+{
+	if (!StateModifier)
+	{
+		return;
+	}
+
+	StateModifier->SetFramingTargets(Targets);
+}
+
+void UNamiCameraEffectLibrary::UpdateFramingConfig(UNamiCameraStateModifier* StateModifier, const FNamiCameraFramingConfig& Config, bool bEnableFraming)
+{
+	if (!StateModifier)
+	{
+		return;
+	}
+
+	StateModifier->FramingConfig = Config;
+	StateModifier->bEnableFraming = bEnableFraming;
 }
 

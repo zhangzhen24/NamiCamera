@@ -22,6 +22,7 @@ public class NamiCamera : ModuleRules
 				"AnimationCore",
 				"DeveloperSettings",
 				"GameplayTags",
+				"InputCore",
 			}
 		);
 	}

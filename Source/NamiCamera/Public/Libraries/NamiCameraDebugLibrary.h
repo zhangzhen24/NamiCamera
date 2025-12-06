@@ -53,5 +53,28 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Nami Camera|Debug")
 	static FString GetCameraViewString(const FNamiCameraView& View);
+
+	/**
+	 * 绘制多目标构图的调试信息
+	 * @param CameraLocation 相机位置
+	 * @param CameraRotation 相机旋转
+	 * @param FOV 相机视野
+	 * @param FramingCenter 构图中心
+	 * @param ArmLength 参考距离（可用当前吊臂长度或构图距离）
+	 * @param SafeZone 安全区比例（0~0.5）
+	 * @param Targets 目标位置列表
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Debug", CallInEditor)
+	static void DrawFramingDebug(
+		UWorld* World,
+		const FVector& CameraLocation,
+		const FRotator& CameraRotation,
+		float FOV,
+		const FVector& FramingCenter,
+		float ArmLength,
+		const FVector2D& SafeZone,
+		const TArray<FVector>& Targets,
+		float Duration = 0.0f,
+		float Thickness = 2.0f);
 };
 
