@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Structs/Modify/NamiCameraModifyTypes.h"
+#include "LogNamiCamera.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraModifyTypes)
 
@@ -76,8 +77,6 @@ FRotator FNamiRotatorModify::Apply(const FRotator& InValue, float Weight) const
 			Result.Yaw = InValue.Yaw + FMath::FindDeltaAngleDegrees(InValue.Yaw, RawTarget.Yaw);
 			Result.Roll = InValue.Roll + FMath::FindDeltaAngleDegrees(InValue.Roll, RawTarget.Roll);
 		}
-		UE_LOG(LogNamiCamera, Warning, TEXT("[FNamiRotatorModify::Apply] ★ Additive: InValue=%s + Value=%s * Weight=%.3f = Result=%s"),
-			*InValue.ToString(), *Value.ToString(), Weight, *Result.ToString());
 		break;
 		
 	case ENamiCameraBlendMode::Override:
@@ -91,8 +90,6 @@ FRotator FNamiRotatorModify::Apply(const FRotator& InValue, float Weight) const
 			Result.Yaw = InValue.Yaw + FMath::FindDeltaAngleDegrees(InValue.Yaw, NormalizedValue.Yaw) * Weight;
 			Result.Roll = InValue.Roll + FMath::FindDeltaAngleDegrees(InValue.Roll, NormalizedValue.Roll) * Weight;
 		}
-		UE_LOG(LogNamiCamera, Warning, TEXT("[FNamiRotatorModify::Apply] ★ Override: Lerp(InValue=%s, Value=%s, Weight=%.3f) = Result=%s"),
-			*InValue.ToString(), *Value.ToString(), Weight, *Result.ToString());
 		break;
 		
 	default:

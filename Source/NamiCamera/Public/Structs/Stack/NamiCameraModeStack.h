@@ -52,8 +52,9 @@ protected:
 	/**
 	 * 混合所有模式的视图
 	 * @param OutCameraModeView 输出的混合视图
+	 * @param DeltaTime 帧时间（用于PivotLocation计算）
 	 */
-	void BlendStack(FNamiCameraView& OutCameraModeView) const;
+	void BlendStack(FNamiCameraView& OutCameraModeView, float DeltaTime = 0.0f) const;
 
 private:
 	/** 模式堆栈 */

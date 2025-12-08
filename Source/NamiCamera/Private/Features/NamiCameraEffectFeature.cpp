@@ -64,15 +64,6 @@ void UNamiCameraEffectFeature::Update_Implementation(float DeltaTime)
 
 	// 计算混合权重
 	CurrentBlendWeight = CalculateBlendWeight(DeltaTime);
-
-	// 检查输入打断
-	if (bAllowInputInterrupt && !bIsExiting)
-	{
-		if (CheckInputInterrupt())
-		{
-			InterruptEffect();
-		}
-	}
 }
 
 void UNamiCameraEffectFeature::ApplyToView_Implementation(FNamiCameraView& InOutView, float DeltaTime)
@@ -158,25 +149,6 @@ void UNamiCameraEffectFeature::ResumeEffect()
 	NAMI_LOG_EFFECT(Verbose, TEXT("[UNamiCameraEffectFeature] 恢复效果：%s"), *EffectName.ToString());
 }
 
-void UNamiCameraEffectFeature::InterruptEffect()
-{
-	if (!bIsActive)
-	{
-		return;
-	}
-
-	// 使用打断混合时间
-	float OriginalBlendOutTime = BlendOutTime;
-	BlendOutTime = InterruptBlendTime;
-
-	DeactivateEffect(false);
-
-	// 恢复原始混合时间（以防重复使用）
-	BlendOutTime = OriginalBlendOutTime;
-
-	NAMI_LOG_EFFECT(Log, TEXT("[UNamiCameraEffectFeature] 打断效果：%s，混合时间：%.2f"), 
-		*EffectName.ToString(), InterruptBlendTime);
-}
 
 float UNamiCameraEffectFeature::CalculateBlendWeight(float DeltaTime)
 {
@@ -229,14 +201,6 @@ float UNamiCameraEffectFeature::CalculateBlendWeight(float DeltaTime)
 	}
 
 	return Weight;
-}
-
-bool UNamiCameraEffectFeature::CheckInputInterrupt() const
-{
-	// 默认实现：子类可以重写
-	// 这里可以检查玩家输入，但需要访问 PlayerController
-	// 子类应该重写此方法来实现具体的输入检测逻辑
-	return false;
 }
 
 void UNamiCameraEffectFeature::ApplyEffect_Implementation(FNamiCameraView& InOutView, float Weight, float DeltaTime)

@@ -12,6 +12,9 @@
 #include "Features/NamiCameraFeature.h"
 #include "GameplayTagContainer.h"
 #include "NamiCameraTags.h"
+#include "DrawDebugHelpers.h"
+#include "Engine/World.h"
+#include "Debug/NamiCameraDebugInfo.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// FNamiCameraModeHandle
@@ -100,11 +103,6 @@ void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &Desi
 		return;
 	}
 
-	NAMI_LOG_COMPONENT(Warning, TEXT("[Component] ModeView CamLoc=%s Rot=%s FOV=%.2f"),
-					   *CameraModeView.CameraLocation.ToString(),
-					   *CameraModeView.CameraRotation.ToString(),
-					   CameraModeView.FOV);
-
 	// 应用全局 Feature（在所有 Mode Feature 之后）
 	for (UNamiCameraFeature* Feature : GlobalFeatures)
 	{
@@ -114,6 +112,8 @@ void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &Desi
 			Feature->ApplyToView(CameraModeView, DeltaTime);
 		}
 	}
+
+	DrawDebugCameraInfo(CameraModeView);
 
 	// PlayerController
 	if (APlayerController *PC = GetOwnerPlayerController())
@@ -147,14 +147,8 @@ void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &Desi
 		}
 
 		FHitResult HitResult;
-		const FVector PrevLoc = PC->GetPawn() ? PC->GetPawn()->GetActorLocation() : FVector::ZeroVector;
-		const FRotator PrevRot = PC->GetControlRotation();
-		NAMI_LOG_COMPONENT(Warning, TEXT("[Component] PC Before Loc=%s CtrlRot=%s"), *PrevLoc.ToString(), *PrevRot.ToString());
 		PC->K2_SetActorLocation(CurrentControlLocation, false, HitResult, true);
 		PC->SetControlRotation(CurrentControlRotation);
-		const FVector AfterLoc = PC->GetPawn() ? PC->GetPawn()->GetActorLocation() : FVector::ZeroVector;
-		const FRotator AfterRot = PC->GetControlRotation();
-		NAMI_LOG_COMPONENT(Warning, TEXT("[Component] PC After  Loc=%s CtrlRot=%s"), *AfterLoc.ToString(), *AfterRot.ToString());
 	}
 
 	// 构建目标 POV（Mode 层计算的结果）
@@ -175,10 +169,6 @@ void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &Desi
 		TargetPOV.PostProcessSettings = PostProcessSettings;
 	}
 
-	NAMI_LOG_COMPONENT(Warning, TEXT("[Component] TargetPOV Loc=%s Rot=%s FOV=%.2f"),
-					   *TargetPOV.Location.ToString(),
-					   *TargetPOV.Rotation.ToString(),
-					   TargetPOV.FOV);
 
 	// ========== 【阶段二：平滑混合层】 ==========
 	// 从当前位置平滑过渡到目标位置，解决瞬切问题
@@ -250,14 +240,6 @@ void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &Desi
 
 	// 输出最终视图
 	DesiredView = CurrentActualView;
-
-	NAMI_LOG_COMPONENT(Warning, TEXT("[Component] AfterSmooth Loc=%s Rot=%s FOV=%.2f (Before=%s/%s/%.2f)"),
-					   *CurrentActualView.Location.ToString(),
-					   *CurrentActualView.Rotation.ToString(),
-					   CurrentActualView.FOV,
-					   *BeforeLoc.ToString(),
-					   *BeforeRot.ToString(),
-					   BeforeFOV);
 
 	// 同步到组件
 	SetWorldLocationAndRotation(CurrentActualView.Location, CurrentActualView.Rotation);
@@ -556,8 +538,6 @@ void UNamiCameraComponent::AddGlobalFeature(UNamiCameraFeature* Feature)
 		Feature->Initialize(ActiveMode);
 	}
 
-	NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::AddGlobalFeature] 添加全局 Feature: %s"), 
-		*Feature->GetName());
 }
 
 bool UNamiCameraComponent::RemoveGlobalFeature(UNamiCameraFeature* Feature)
@@ -571,8 +551,6 @@ bool UNamiCameraComponent::RemoveGlobalFeature(UNamiCameraFeature* Feature)
 	if (Index != INDEX_NONE)
 	{
 		GlobalFeatures.RemoveAt(Index);
-		NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::RemoveGlobalFeature] 移除全局 Feature: %s"), 
-			*Feature->GetName());
 		return true;
 	}
 
@@ -654,4 +632,170 @@ void UNamiCameraComponent::RemoveGlobalFeaturesByTags(const FGameplayTagContaine
 void UNamiCameraComponent::RemoveStayGlobalFeatures()
 {
 	RemoveGlobalFeaturesByTag(Tag_Camera_Feature_ManualCleanup, true);
+}
+
+UNamiCameraFeature* UNamiCameraComponent::GetFeatureByName(FName FeatureName) const
+{
+	// 先查找全局Feature
+	if (UNamiCameraFeature* Feature = FindGlobalFeatureByName(FeatureName))
+	{
+		return Feature;
+	}
+	
+	// 再查找当前激活Mode的Feature
+	if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
+	{
+		const TArray<UNamiCameraFeature*>& ModeFeatures = ActiveMode->GetFeatures();
+		for (UNamiCameraFeature* Feature : ModeFeatures)
+		{
+			if (IsValid(Feature) && Feature->FeatureName == FeatureName)
+			{
+				return Feature;
+			}
+		}
+	}
+	
+	return nullptr;
+}
+
+TArray<UNamiCameraFeature*> UNamiCameraComponent::GetFeaturesByTag(const FGameplayTag& Tag) const
+{
+	TArray<UNamiCameraFeature*> Result;
+	
+	if (!Tag.IsValid())
+	{
+		return Result;
+	}
+	
+	// 查找全局Feature
+	for (UNamiCameraFeature* Feature : GlobalFeatures)
+	{
+		if (IsValid(Feature) && Feature->HasTag(Tag))
+		{
+			Result.Add(Feature);
+		}
+	}
+	
+	// 查找当前激活Mode的Feature
+	if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
+	{
+		const TArray<UNamiCameraFeature*>& ModeFeatures = ActiveMode->GetFeatures();
+		for (UNamiCameraFeature* Feature : ModeFeatures)
+		{
+			if (IsValid(Feature) && Feature->HasTag(Tag))
+			{
+				Result.Add(Feature);
+			}
+		}
+	}
+	
+	return Result;
+}
+
+TArray<UNamiCameraFeature*> UNamiCameraComponent::GetFeaturesByTags(const FGameplayTagContainer& TagContainer) const
+{
+	TArray<UNamiCameraFeature*> Result;
+	
+	if (TagContainer.IsEmpty())
+	{
+		return Result;
+	}
+	
+	// 查找全局Feature
+	for (UNamiCameraFeature* Feature : GlobalFeatures)
+	{
+		if (IsValid(Feature) && Feature->HasAnyTag(TagContainer))
+		{
+			Result.Add(Feature);
+		}
+	}
+	
+	// 查找当前激活Mode的Feature
+	if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
+	{
+		const TArray<UNamiCameraFeature*>& ModeFeatures = ActiveMode->GetFeatures();
+		for (UNamiCameraFeature* Feature : ModeFeatures)
+		{
+			if (IsValid(Feature) && Feature->HasAnyTag(TagContainer))
+			{
+				Result.Add(Feature);
+			}
+		}
+	}
+	
+	return Result;
+}
+
+void UNamiCameraComponent::DrawDebugCameraInfo(const FNamiCameraView& View) const
+{
+	if (!UNamiCameraSettings::ShouldEnableDrawDebug())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!IsValid(World))
+	{
+		return;
+	}
+
+	const float DrawDuration = UNamiCameraSettings::GetDrawDebugDuration();
+	const float DrawTime = DrawDuration > 0.0f ? DrawDuration : -1.0f;
+	const float Thickness = UNamiCameraSettings::GetDrawDebugThickness();
+	const float SphereSize = 15.0f;
+	const float ArrowSize = 50.0f;
+
+	// 绘制 PivotLocation（枢轴点）
+	if (UNamiCameraSettings::ShouldDrawPivotLocation())
+	{
+		// 绿色球体表示枢轴点
+		DrawDebugSphere(World, View.PivotLocation, SphereSize, 12, FColor::Green, false, DrawTime, 0, Thickness);
+	}
+
+	// 绘制 CameraLocation（相机位置）
+	if (UNamiCameraSettings::ShouldDrawCameraLocation())
+	{
+		// 蓝色球体表示相机位置
+		DrawDebugSphere(World, View.CameraLocation, SphereSize, 12, FColor::Blue, false, DrawTime, 0, Thickness);
+	}
+
+	// 绘制从相机到枢轴点的连线（吊臂）
+	if (UNamiCameraSettings::ShouldDrawArmInfo() && 
+		UNamiCameraSettings::ShouldDrawPivotLocation() && 
+		UNamiCameraSettings::ShouldDrawCameraLocation())
+	{
+		// 红色连线表示吊臂
+		DrawDebugLine(World, View.CameraLocation, View.PivotLocation, FColor::Red, false, DrawTime, 0, Thickness);
+	}
+
+	// 绘制相机方向（Forward/Right/Up）
+	if (UNamiCameraSettings::ShouldDrawCameraDirection() && UNamiCameraSettings::ShouldDrawCameraLocation())
+	{
+		const FVector Forward = View.CameraRotation.Vector();
+		const FVector Right = FRotationMatrix(View.CameraRotation).GetScaledAxis(EAxis::Y);
+		const FVector Up = FRotationMatrix(View.CameraRotation).GetScaledAxis(EAxis::Z);
+		
+		// 前方向（红色箭头）
+		DrawDebugDirectionalArrow(World, View.CameraLocation, 
+			View.CameraLocation + Forward * ArrowSize, 
+			ArrowSize * 0.3f, FColor::Red, false, DrawTime, 0, Thickness);
+		
+		// 右方向（绿色箭头）
+		DrawDebugDirectionalArrow(World, View.CameraLocation, 
+			View.CameraLocation + Right * ArrowSize * 0.5f, 
+			ArrowSize * 0.15f, FColor::Green, false, DrawTime, 0, Thickness);
+		
+		// 上方向（蓝色箭头）
+		DrawDebugDirectionalArrow(World, View.CameraLocation, 
+			View.CameraLocation + Up * ArrowSize * 0.5f, 
+			ArrowSize * 0.15f, FColor::Blue, false, DrawTime, 0, Thickness);
+	}
+
+	// 输出相机信息日志（如果启用）
+	if (UNamiCameraSettings::ShouldLogCameraInfo())
+	{
+		FNamiCameraDebugInfo DebugInfo;
+		DebugInfo.FromView(View);
+		NAMI_LOG_CAMERA_INFO(Log, TEXT("%s"), *DebugInfo.ToString());
+	}
 }

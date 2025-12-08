@@ -7,10 +7,12 @@
 #include "Structs/Mode/NamiCameraModeHandle.h"
 #include "Structs/Mode/NamiCameraModeStackEntry.h"
 #include "Camera/CameraComponent.h"
+#include "Modes/NamiCameraModeBase.h"
 #include "NamiCameraComponent.generated.h"
 
-class UNamiCameraModeBase;
+// 前向声明
 class ANamiPlayerCameraManager;
+
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPushCameraModeDelegate, UNamiCameraModeBase *, CameraModeInstance);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPopCameraModeDelegate);
@@ -56,6 +58,9 @@ public:
 
 	/** 获取默认相机模式类 */
 	TSubclassOf<UNamiCameraModeBase> GetDefaultCameraModeClass() const { return DefaultCameraMode; }
+
+	/** 绘制相机 Debug 信息（PivotLocation、CameraLocation、ArmLength 等） */
+	void DrawDebugCameraInfo(const struct FNamiCameraView& View) const;
 
 	// ========== Camera Mode ==========
 
@@ -126,6 +131,58 @@ public:
 	/** 移除所有 Stay 类型的全局 Feature（便捷方法） */
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Features")
 	void RemoveStayGlobalFeatures();
+
+	// ========== Feature 查找（全局 + 当前激活Mode） ==========
+
+	/**
+	 * 通过类型查找 Feature（先查找全局Feature，再查找当前激活Mode的Feature）
+	 * @tparam T Feature类型
+	 * @return 找到的Feature，如果不存在则返回nullptr
+	 */
+	template<typename T>
+	T* GetFeature() const
+	{
+		// 先查找全局Feature
+		for (UNamiCameraFeature* Feature : GlobalFeatures)
+		{
+			if (T* TypedFeature = Cast<T>(Feature))
+			{
+				return TypedFeature;
+			}
+		}
+		
+		// 再查找当前激活Mode的Feature
+		if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
+		{
+			return ActiveMode->template GetFeature<T>();
+		}
+		
+		return nullptr;
+	}
+
+	/**
+	 * 通过名称查找 Feature（先查找全局Feature，再查找当前激活Mode的Feature）
+	 * @param FeatureName Feature名称
+	 * @return 找到的Feature，如果不存在则返回nullptr
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nami Camera|Features")
+	UNamiCameraFeature* GetFeatureByName(FName FeatureName) const;
+
+	/**
+	 * 通过 Tag 查找所有匹配的 Feature（全局 + 当前激活Mode）
+	 * @param Tag 要匹配的Tag
+	 * @return 匹配的Feature列表
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nami Camera|Features")
+	TArray<UNamiCameraFeature*> GetFeaturesByTag(const FGameplayTag& Tag) const;
+
+	/**
+	 * 通过 Tag 容器查找所有匹配的 Feature（匹配任意Tag，全局 + 当前激活Mode）
+	 * @param TagContainer Tag容器
+	 * @return 匹配的Feature列表
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nami Camera|Features")
+	TArray<UNamiCameraFeature*> GetFeaturesByTags(const FGameplayTagContainer& TagContainer) const;
 
 protected:
 	/** 默认相机模式 */

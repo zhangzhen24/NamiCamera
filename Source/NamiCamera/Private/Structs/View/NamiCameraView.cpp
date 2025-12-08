@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Structs/View/NamiCameraView.h"
+#include "Libraries/NamiCameraMath.h"
 
 FNamiCameraView::FNamiCameraView()
 {
@@ -41,24 +42,38 @@ void FNamiCameraView::Blend(const FNamiCameraView& Other, float OtherWeight)
 	// 基于新的 PivotLocation 和混合后的旋转、距离重新计算 Camera Location
 	CameraLocation = PivotLocation + DiffRotation.Vector() * NewCameraDistance;
 
-	// 混合 Camera Rotation（使用 FindDeltaAngleDegrees 确保选择最短路径，避免跨越 360 度边界跳变）
-	FRotator TargetCameraRotation;
-	TargetCameraRotation.Pitch = CameraRotation.Pitch + FMath::FindDeltaAngleDegrees(CameraRotation.Pitch, Other.CameraRotation.Pitch) * OtherWeight;
-	TargetCameraRotation.Yaw = CameraRotation.Yaw + FMath::FindDeltaAngleDegrees(CameraRotation.Yaw, Other.CameraRotation.Yaw) * OtherWeight;
-	TargetCameraRotation.Roll = CameraRotation.Roll + FMath::FindDeltaAngleDegrees(CameraRotation.Roll, Other.CameraRotation.Roll) * OtherWeight;
-	CameraRotation = TargetCameraRotation;
-	CameraRotation.Normalize();
+	// 混合 Camera Rotation（优化：只在混合前归一化一次，混合后归一化一次）
+	FRotator NormalizedCurrentCameraRot = FNamiCameraMath::NormalizeRotatorTo360(CameraRotation);
+	FRotator NormalizedOtherCameraRot = FNamiCameraMath::NormalizeRotatorTo360(Other.CameraRotation);
+	
+	float CameraPitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrentCameraRot.Pitch, NormalizedOtherCameraRot.Pitch);
+	float CameraYawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrentCameraRot.Yaw, NormalizedOtherCameraRot.Yaw);
+	float CameraRollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrentCameraRot.Roll, NormalizedOtherCameraRot.Roll);
+	
+	// 应用差值（结果会在最后归一化）
+	CameraRotation.Pitch = NormalizedCurrentCameraRot.Pitch + CameraPitchDelta * OtherWeight;
+	CameraRotation.Yaw = NormalizedCurrentCameraRot.Yaw + CameraYawDelta * OtherWeight;
+	CameraRotation.Roll = NormalizedCurrentCameraRot.Roll + CameraRollDelta * OtherWeight;
+	// 确保结果在0-360度范围（只归一化一次）
+	CameraRotation = FNamiCameraMath::NormalizeRotatorTo360(CameraRotation);
 
 	// 混合 Control Location
 	ControlLocation = FMath::Lerp(ControlLocation, Other.ControlLocation, OtherWeight);
 
-	// 混合 Control Rotation（使用 FindDeltaAngleDegrees 确保选择最短路径，避免跨越 360 度边界跳变）
-	FRotator TargetControlRotation;
-	TargetControlRotation.Pitch = ControlRotation.Pitch + FMath::FindDeltaAngleDegrees(ControlRotation.Pitch, Other.ControlRotation.Pitch) * OtherWeight;
-	TargetControlRotation.Yaw = ControlRotation.Yaw + FMath::FindDeltaAngleDegrees(ControlRotation.Yaw, Other.ControlRotation.Yaw) * OtherWeight;
-	TargetControlRotation.Roll = ControlRotation.Roll + FMath::FindDeltaAngleDegrees(ControlRotation.Roll, Other.ControlRotation.Roll) * OtherWeight;
-	ControlRotation = TargetControlRotation;
-	ControlRotation.Normalize();
+	// 混合 Control Rotation（优化：只在混合前归一化一次，混合后归一化一次）
+	FRotator NormalizedCurrentControlRot = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
+	FRotator NormalizedOtherControlRot = FNamiCameraMath::NormalizeRotatorTo360(Other.ControlRotation);
+	
+	float ControlPitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrentControlRot.Pitch, NormalizedOtherControlRot.Pitch);
+	float ControlYawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrentControlRot.Yaw, NormalizedOtherControlRot.Yaw);
+	float ControlRollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrentControlRot.Roll, NormalizedOtherControlRot.Roll);
+	
+	// 应用差值（结果会在最后归一化）
+	ControlRotation.Pitch = NormalizedCurrentControlRot.Pitch + ControlPitchDelta * OtherWeight;
+	ControlRotation.Yaw = NormalizedCurrentControlRot.Yaw + ControlYawDelta * OtherWeight;
+	ControlRotation.Roll = NormalizedCurrentControlRot.Roll + ControlRollDelta * OtherWeight;
+	// 确保结果在0-360度范围（只归一化一次）
+	ControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
 
 	// 混合 FOV
 	FOV = FMath::Lerp(FOV, Other.FOV, OtherWeight);

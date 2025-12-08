@@ -71,6 +71,42 @@ void UNamiSpringArmFeature::ApplyToView_Implementation(FNamiCameraView& InOutVie
 	// 更新视图的相机位置和旋转
 	InOutView.CameraLocation = CameraTransform.GetLocation();
 	InOutView.CameraRotation = CameraTransform.Rotator();
+	
+	// 应用 CameraOffset（如果相机模式是 NamiFollowCameraMode）
+	// 这样可以确保 CameraOffset 的效果不会被 SpringArm 覆盖
+	UNamiCameraModeBase* OwnerMode = GetCameraMode();
+	if (IsValid(OwnerMode))
+	{
+		UNamiFollowCameraMode* FollowMode = Cast<UNamiFollowCameraMode>(OwnerMode);
+		if (IsValid(FollowMode))
+		{
+			FVector CameraOffset = FollowMode->CameraOffset;
+			
+			// 如果 CameraOffset 不为零，应用它
+			if (!CameraOffset.IsNearlyZero())
+			{
+				// 应用目标旋转（如果启用）
+				if (FollowMode->bUseTargetRotation)
+				{
+					// 获取主目标的旋转
+					AActor* PrimaryTarget = FollowMode->GetPrimaryTarget();
+					if (IsValid(PrimaryTarget))
+					{
+						FRotator TargetRotation = PrimaryTarget->GetActorRotation();
+						if (FollowMode->bUseYawOnly)
+						{
+							TargetRotation.Pitch = 0.0f;
+							TargetRotation.Roll = 0.0f;
+						}
+						CameraOffset = TargetRotation.RotateVector(CameraOffset);
+					}
+				}
+				
+				// 将 CameraOffset 应用到相机位置
+				InOutView.CameraLocation += CameraOffset;
+			}
+		}
+	}
 }
 
 TArray<AActor*> UNamiSpringArmFeature::GetIgnoreActors() const

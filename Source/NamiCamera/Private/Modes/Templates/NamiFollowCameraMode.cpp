@@ -3,6 +3,9 @@
 #include "Modes/Templates/NamiFollowCameraMode.h"
 #include "Libraries/NamiCameraMath.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+#include "Components/NamiCameraComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiFollowCameraMode)
 
@@ -15,7 +18,6 @@ void UNamiFollowCameraMode::Activate_Implementation()
 	Super::Activate_Implementation();
 
 	bInitialized = false;
-	PivotVelocity = FVector::ZeroVector;
 	CameraVelocity = FVector::ZeroVector;
 	YawVelocity = 0.0f;
 	PitchVelocity = 0.0f;
@@ -27,7 +29,62 @@ FNamiCameraView UNamiFollowCameraMode::CalculateView_Implementation(float DeltaT
 
 	// 1. 计算枢轴点
 	FVector TargetPivot = CalculatePivotLocation();
-	TargetPivot.Z += PivotHeightOffset;
+	
+	// 应用PivotLocationOffset（视点偏移）
+	FVector PivotOffset = PivotLocationOffset;
+	if (!PivotOffset.IsNearlyZero())
+	{
+		// 应用控制器旋转（如果启用）
+		if (bPivotOffsetUseTargetRotation)
+		{
+			// 获取控制器旋转（ControlRotation）
+			FRotator ControlRotation = FRotator::ZeroRotator;
+			UNamiCameraComponent* CameraComp = GetCameraComponent();
+			if (IsValid(CameraComp))
+			{
+				// 优先从 Owner Pawn 获取
+				APawn* OwnerPawn = CameraComp->GetOwnerPawn();
+				if (IsValid(OwnerPawn))
+				{
+					ControlRotation = OwnerPawn->GetControlRotation();
+				}
+				else
+				{
+					// 尝试从 PlayerController 获取
+					APlayerController* PC = CameraComp->GetOwnerPlayerController();
+					if (IsValid(PC))
+					{
+						ControlRotation = PC->GetControlRotation();
+					}
+				}
+			}
+			
+			// 如果获取到了有效的ControlRotation，立即归一化，然后再进行后续计算
+			if (!ControlRotation.IsNearlyZero())
+			{
+				// 立即归一化，确保获取的 ControlRotation 是归一化后的旋转
+				// 使用0-360度归一化，避免180/-180跳变问题
+				FRotator NormalizedControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
+				
+				if (bPivotOffsetUseYawOnly)
+				{
+					// 只使用Yaw，Pitch和Roll设为0
+					NormalizedControlRotation.Pitch = 0.0f;
+					NormalizedControlRotation.Roll = 0.0f;
+				}
+				
+				// 使用归一化后的 ControlRotation 旋转 PivotOffset
+				PivotOffset = NormalizedControlRotation.RotateVector(PivotOffset);
+			}
+		}
+		TargetPivot += PivotOffset;
+	}
+	
+	// 叠加PivotHeightOffset（如果PivotLocationOffset.Z为0或很小）
+	if (FMath::IsNearlyZero(PivotLocationOffset.Z, 1.0f))
+	{
+		TargetPivot.Z += PivotHeightOffset;
+	}
 
 	// 2. 计算相机位置
 	FVector TargetCameraLocation = CalculateCameraLocation(TargetPivot);
@@ -55,22 +112,8 @@ FNamiCameraView UNamiFollowCameraMode::CalculateView_Implementation(float DeltaT
 		}
 		else
 		{
-			// 平滑枢轴点
-			if (bEnablePivotSmoothing && PivotSmoothIntensity > 0.0f)
-			{
-				// 将平滑强度映射到实际平滑时间
-				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(PivotSmoothIntensity);
-				CurrentPivotLocation = FNamiCameraMath::SmoothDamp(
-					CurrentPivotLocation,
-					TargetPivot,
-					PivotVelocity,
-					SmoothTime,
-					DeltaTime);
-			}
-			else
-			{
+			// PivotLocation 不再进行平滑处理，直接使用计算值
 				CurrentPivotLocation = TargetPivot;
-			}
 
 			// 平滑相机位置
 			if (bEnableCameraLocationSmoothing && CameraLocationSmoothIntensity > 0.0f)
@@ -231,7 +274,13 @@ void UNamiFollowCameraMode::ClearCustomPivotLocation()
 	CustomPivotLocation = FVector::ZeroVector;
 }
 
-FVector UNamiFollowCameraMode::CalculatePivotLocation_Implementation() const
+FVector UNamiFollowCameraMode::CalculatePivotLocation_Implementation(float DeltaTime)
+{
+	// 调用本类的CalculatePivotLocation() const方法
+	return CalculatePivotLocation();
+}
+
+FVector UNamiFollowCameraMode::CalculatePivotLocation() const
 {
 	// 使用自定义枢轴点
 	if (bUseCustomPivotLocation)
@@ -318,7 +367,9 @@ FRotator UNamiFollowCameraMode::CalculateCameraRotation_Implementation(
 	{
 		return CurrentCameraRotation;
 	}
-	return Direction.Rotation();
+	// 使用0-360度归一化，避免180/-180跳变问题
+	FRotator Rotation = Direction.Rotation();
+	return FNamiCameraMath::NormalizeRotatorTo360(Rotation);
 }
 
 FRotator UNamiFollowCameraMode::GetPrimaryTargetRotation() const
@@ -331,7 +382,3 @@ FRotator UNamiFollowCameraMode::GetPrimaryTargetRotation() const
 	return FRotator::ZeroRotator;
 }
 
-void UNamiFollowCameraMode::ApplySmoothing(float DeltaTime)
-{
-	// 此方法保留用于子类扩展
-}

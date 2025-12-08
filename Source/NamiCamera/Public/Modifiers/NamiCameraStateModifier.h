@@ -51,14 +51,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Camera Effect")
 	TScriptInterface<INamiCameraInputProvider> GetInputProvider() const { return InputProvider; }
 
-	/** 输入触发整段打断的阈值（整段打断专用） */
-	UPROPERTY(BlueprintReadWrite, Category = "Camera Effect|Interrupt")
-	float InputInterruptThreshold = 0.1f;
-
-	/** 整段打断的冷却时间，避免抖动反复触发 */
-	UPROPERTY(BlueprintReadWrite, Category = "Camera Effect|Interrupt")
-	float InputInterruptCooldown = 0.15f;
-
 	// ========== 多目标构图 ==========
 
 	/** 是否启用多目标构图（默认关闭） */
@@ -123,9 +115,6 @@ protected:
 	/** 上一帧的相机输入大小 */
 	float LastCameraInputMagnitude = 0.0f;
 
-	/** 视角控制是否已被打断 */
-	bool bViewControlInterrupted = false;
-
 	// ========== 退出阶段缓存 ==========
 	/** 退出混出时，ArmRotation 的起始（角色空间）缓存，避免每帧重算导致空间漂移 */
 	FRotator ExitStartCharacterSpaceArmRotation = FRotator::ZeroRotator;
@@ -140,9 +129,6 @@ protected:
 	FVector ExitStartArmOffset = FVector::ZeroVector;
 	bool bHasExitArmLengthStart = false;
 	bool bHasExitArmOffsetStart = false;
-
-	/** 冷却计时（内部使用） */
-	float InterruptCooldownRemaining = 0.0f;
 
 	/** 最终输出是否强制瞬切（跳过输出层混合） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Effect|Output")
@@ -184,12 +170,6 @@ protected:
 	 * @return 相机输入的大小（0 = 无输入，1 = 最大输入）
 	 */
 	float GetPlayerCameraInputMagnitude() const;
-
-	/** 检查是否应该被玩家输入打断 */
-	void CheckViewControlInterrupt();
-
-	/** 检查是否需要整段打断（玩家输入触发） */
-	void CheckWholeEffectInterrupt(float DeltaTime);
 
 	/** 计算多目标构图结果（返回是否成功） */
 	bool ComputeFramingResult(float DeltaTime, const FMinimalViewInfo &InOutPOV, FNamiCameraFramingResult &OutResult);

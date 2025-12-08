@@ -49,6 +49,8 @@ enum class ENamiFollowTargetType : uint8
 	Primary UMETA(DisplayName = "主要目标"),
 	/** 辅助目标（用于构图计算） */
 	Secondary UMETA(DisplayName = "辅助目标"),
+	/** 敌人目标（用于战斗相机） */
+	Enemy UMETA(DisplayName = "敌人目标"),
 };
 
 /**
@@ -105,5 +107,26 @@ enum class ENamiCameraControlMode : uint8
 	 * 适用于：柔和的视角引导
 	 */
 	Blended UMETA(DisplayName = "混合视角"),
+};
+
+/**
+ * 相机输入模式
+ * 
+ * 定义技能相机如何处理玩家输入
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraInputMode : uint8
+{
+	/** 
+	 * 无输入：完全忽略玩家输入
+	 * 适用于：过场动画、QTE、剧情演出
+	 */
+	NoInput UMETA(DisplayName = "无输入"),
+	
+	/** 
+	 * 有输入：允许玩家输入影响相机
+	 * 适用于：技能相机、战斗相机
+	 */
+	WithInput UMETA(DisplayName = "有输入"),
 };
 

@@ -19,8 +19,6 @@ bool UNamiCameraStateModifier::ApplyEffect(FMinimalViewInfo &InOutPOV, float Wei
 {
 	// 更新缓存的引用（每帧更新，但使用缓存避免重复查找）
 	UpdateCachedReferences();
-	// 检查整段输入打断
-	CheckWholeEffectInterrupt(DeltaTime);
 
 	NAMI_LOG_STATE(Warning, TEXT("[StateModifier] Begin bExiting=%d Weight=%.3f POV Loc=%s Rot=%s FOV=%.2f"),
 				   bIsExiting ? 1 : 0,
@@ -601,39 +599,25 @@ void UNamiCameraStateModifier::ApplyStateModifyAndComputeView(FMinimalViewInfo &
 		}
 	}
 
-	// 4. 检查视角控制是否应该被打断（使用 StateModify 中的配置）
+	// 4. 应用 ControlRotationOffset（如果启用）
 	if (TempStateModify.ControlRotationOffset.bEnabled)
 	{
-		CheckViewControlInterrupt();
-
-		// 如果被打断，不应用 ControlRotationOffset
-		if (bViewControlInterrupted)
+		// 计算有效权重（混合模式下根据玩家输入衰减）
+		float EffectiveWeight = Weight;
+		if (TempStateModify.ControlMode == ENamiCameraControlMode::Blended)
 		{
-			// 临时禁用 ControlRotationOffset（避免创建临时对象，直接修改后恢复）
-			const bool bWasEnabled = TempStateModify.ControlRotationOffset.bEnabled;
-			TempStateModify.ControlRotationOffset.bEnabled = false;
-			TempStateModify.ApplyToState(CurrentState, Weight);
-			TempStateModify.ControlRotationOffset.bEnabled = bWasEnabled; // 恢复原值
-		}
-		else
-		{
-			// 计算有效权重（混合模式下根据玩家输入衰减）
-			float EffectiveWeight = Weight;
-			if (TempStateModify.ControlMode == ENamiCameraControlMode::Blended)
+			// 使用缓存的输入大小（如果有效）
+			if (!bInputMagnitudeCacheValid)
 			{
-				// 使用缓存的输入大小（如果有效）
-				if (!bInputMagnitudeCacheValid)
-				{
-					CachedInputMagnitude = GetPlayerCameraInputMagnitude();
-					bInputMagnitudeCacheValid = true;
-				}
-				// 玩家输入越大，效果权重越低
-				EffectiveWeight = Weight * (1.0f - FMath::Clamp(CachedInputMagnitude, 0.0f, 1.0f));
+				CachedInputMagnitude = GetPlayerCameraInputMagnitude();
+				bInputMagnitudeCacheValid = true;
 			}
-
-			// 应用所有修改（包括 ControlRotationOffset）
-			TempStateModify.ApplyToState(CurrentState, EffectiveWeight);
+			// 玩家输入越大，效果权重越低
+			EffectiveWeight = Weight; // 暂时不使用输入衰减，等待新版本实现
 		}
+
+		// 应用所有修改（包括 ControlRotationOffset）
+		TempStateModify.ApplyToState(CurrentState, EffectiveWeight);
 	}
 	else
 	{
@@ -757,10 +741,11 @@ float UNamiCameraStateModifier::GetPlayerCameraInputMagnitude() const
 		APlayerController *PC = CameraOwner->GetOwningPlayerController();
 		if (PC)
 		{
-			// 检查 PlayerController 是否实现了接口
-			if (INamiCameraInputProvider *InputProviderInterface = Cast<INamiCameraInputProvider>(PC))
+			// 使用 ImplementsInterface 检查，支持蓝图实现的接口
+			if (PC->GetClass()->ImplementsInterface(UNamiCameraInputProvider::StaticClass()))
 			{
-				InputVector = InputProviderInterface->GetCameraInputVector();
+				// 使用 Execute_ 方法调用，支持蓝图实现
+				InputVector = INamiCameraInputProvider::Execute_GetCameraInputVector(PC);
 			}
 			else
 			{
@@ -799,90 +784,6 @@ float UNamiCameraStateModifier::GetPlayerCameraInputMagnitude() const
 	return InputVector.Size();
 }
 
-void UNamiCameraStateModifier::CheckViewControlInterrupt()
-{
-	// 使用 StateModify 中的配置
-	bool bHasViewControl = StateModify.ControlRotationOffset.bEnabled;
-	ENamiCameraControlMode ControlMode = StateModify.ControlMode;
-	float InputThreshold = StateModify.CameraInputThreshold;
-
-	if (!bHasViewControl || bViewControlInterrupted)
-	{
-		return;
-	}
-
-	// 强制模式不检测打断
-	if (ControlMode == ENamiCameraControlMode::Forced)
-	{
-		return;
-	}
-
-	// 建议模式：检测玩家输入并打断
-	if (ControlMode == ENamiCameraControlMode::Suggestion)
-	{
-		// 使用缓存的输入大小（如果有效），否则重新计算
-		float InputMagnitude;
-		if (bInputMagnitudeCacheValid)
-		{
-			InputMagnitude = CachedInputMagnitude;
-		}
-		else
-		{
-			InputMagnitude = GetPlayerCameraInputMagnitude();
-			CachedInputMagnitude = InputMagnitude;
-			bInputMagnitudeCacheValid = true;
-		}
-
-		if (InputMagnitude > InputThreshold)
-		{
-			// 玩家有输入，打断视角控制
-			bViewControlInterrupted = true;
-
-			NAMI_LOG_EFFECT(Log, TEXT("[UNamiCameraStateModifier] 视角控制被玩家输入打断：%s，输入大小：%.3f，阈值：%.3f"),
-							*EffectName.ToString(), InputMagnitude, InputThreshold);
-
-			// 触发效果打断（使用打断混合时间退出视角控制部分）
-			// 注意：只打断视角控制，其他效果（如震动、FOV）继续生效
-		}
-
-		LastCameraInputMagnitude = InputMagnitude;
-	}
-}
-
-void UNamiCameraStateModifier::CheckWholeEffectInterrupt(float DeltaTime)
-{
-	// 冷却计时
-	if (InterruptCooldownRemaining > 0.0f)
-	{
-		InterruptCooldownRemaining = FMath::Max(0.0f, InterruptCooldownRemaining - DeltaTime);
-	}
-
-	// 仅当允许、未处于退出阶段时检测
-	if (!bAllowInputInterrupt || bIsExiting)
-	{
-		return;
-	}
-
-	// 获取输入大小
-	float InputMagnitude = GetPlayerCameraInputMagnitude();
-	LastCameraInputMagnitude = InputMagnitude;
-
-	// 在冷却中不触发
-	if (InterruptCooldownRemaining > 0.0f)
-	{
-		return;
-	}
-
-	if (InputMagnitude > InputInterruptThreshold)
-	{
-		// 触发整段技能镜头打断（使用基类的 InterruptEffect -> InterruptBlendTime）
-		InterruptEffect();
-		InterruptCooldownRemaining = InputInterruptCooldown;
-
-		NAMI_LOG_EFFECT(Log, TEXT("[UNamiCameraStateModifier] 整段技能镜头被输入打断：%s，输入=%.3f 阈值=%.3f 冷却=%.3f"),
-						*EffectName.ToString(), InputMagnitude, InputInterruptThreshold, InputInterruptCooldown);
-	}
-}
 
 void UNamiCameraStateModifier::SetFramingTargets(const TArray<AActor *> &InTargets)
 {

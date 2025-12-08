@@ -4,6 +4,8 @@
 #include "Features/NamiCameraFeature.h"
 #include "Components/NamiCameraComponent.h"
 #include "Animation/BlendSpace.h"
+#include "Enums/NamiCameraEnums.h"
+#include "GameFramework/Pawn.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraModeBase)
 
@@ -126,6 +128,22 @@ FNamiCameraView UNamiCameraModeBase::CalculateView_Implementation(float DeltaTim
 	FNamiCameraView View;
 	View.FOV = DefaultFOV;
 	return View;
+}
+
+FVector UNamiCameraModeBase::CalculatePivotLocation_Implementation(float DeltaTime)
+{
+	// 基类默认实现：尝试从Pawn获取位置
+	if (CameraComponent.IsValid())
+	{
+		APawn* OwnerPawn = CameraComponent->GetOwnerPawn();
+		if (OwnerPawn)
+		{
+			return OwnerPawn->GetActorLocation();
+		}
+	}
+	
+	// 回退：返回零向量
+	return FVector::ZeroVector;
 }
 
 void UNamiCameraModeBase::AddFeature(UNamiCameraFeature* Feature)

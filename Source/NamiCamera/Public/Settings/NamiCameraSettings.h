@@ -68,73 +68,188 @@ public:
 
 	// ========== 日志分类开关 ==========
 
-	/** 是否启用效果/修改器日志（激活/停用/混合等） */
+	/** 是否启用效果/修改器日志输出到Log（激活/停用/混合等） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "效果日志",
-			ToolTip = "打印效果激活/停用、混合权重等日志"))
+		meta = (DisplayName = "效果日志(Log)",
+			ToolTip = "将效果激活/停用、混合权重等日志输出到Log窗口"))
 	bool bEnableEffectLog{false};
 
-	/** 是否启用State计算日志（详细的计算过程） */
+	/** 是否启用效果/修改器日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "效果日志(屏幕)",
+			ToolTip = "将效果激活/停用、混合权重等日志输出到屏幕"))
+	bool bEnableEffectLogOnScreen{false};
+
+	/** 是否启用State计算日志输出到Log（详细的计算过程） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "State计算日志",
-			ToolTip = "打印State计算过程、混合过程等详细日志（VeryVerbose级别）"))
+		meta = (DisplayName = "State计算日志(Log)",
+			ToolTip = "将State计算过程、混合过程等详细日志输出到Log窗口（VeryVerbose级别）"))
 	bool bEnableStateCalculationLog{false};
 
-	/** 是否启用ANS日志（动画通知相关） */
+	/** 是否启用State计算日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "State计算日志(屏幕)",
+			ToolTip = "将State计算过程、混合过程等详细日志输出到屏幕"))
+	bool bEnableStateCalculationLogOnScreen{false};
+
+	/** 是否启用ANS日志输出到Log（动画通知相关） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "ANS日志",
-			ToolTip = "打印动画通知状态（AnimNotifyState）相关日志"))
+		meta = (DisplayName = "ANS日志(Log)",
+			ToolTip = "将动画通知状态（AnimNotifyState）相关日志输出到Log窗口"))
 	bool bEnableANSLog{false};
 
-	/** 是否启用组件日志（Component相关） */
+	/** 是否启用ANS日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "ANS日志(屏幕)",
+			ToolTip = "将动画通知状态（AnimNotifyState）相关日志输出到屏幕"))
+	bool bEnableANSLogOnScreen{false};
+
+	/** 是否启用组件日志输出到Log（Component相关） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "组件日志",
-			ToolTip = "打印相机组件相关日志"))
+		meta = (DisplayName = "组件日志(Log)",
+			ToolTip = "将相机组件相关日志输出到Log窗口"))
 	bool bEnableComponentLog{false};
 
-	/** 是否启用模式日志（Mode相关） */
+	/** 是否启用组件日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "组件日志(屏幕)",
+			ToolTip = "将相机组件相关日志输出到屏幕"))
+	bool bEnableComponentLogOnScreen{false};
+
+	/** 是否启用模式日志输出到Log（Mode相关） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "模式日志",
-			ToolTip = "打印相机模式相关日志"))
+		meta = (DisplayName = "模式日志(Log)",
+			ToolTip = "将相机模式相关日志输出到Log窗口"))
 	bool bEnableModeLog{false};
 
-	/** 是否启用库函数日志（Library相关） */
+	/** 是否启用模式日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "模式日志(屏幕)",
+			ToolTip = "将相机模式相关日志输出到屏幕"))
+	bool bEnableModeLogOnScreen{false};
+
+	/** 是否启用库函数日志输出到Log（Library相关） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "库函数日志",
-			ToolTip = "打印库函数调用相关日志"))
+		meta = (DisplayName = "库函数日志(Log)",
+			ToolTip = "将库函数调用相关日志输出到Log窗口"))
 	bool bEnableLibraryLog{false};
 
-	/** 是否启用混合探针日志（调试混合过程） */
+	/** 是否启用库函数日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "库函数日志(屏幕)",
+			ToolTip = "将库函数调用相关日志输出到屏幕"))
+	bool bEnableLibraryLogOnScreen{false};
+
+	/** 是否启用混合探针日志输出到Log（调试混合过程） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "混合探针日志",
-			ToolTip = "打印混合权重探针日志（EffectBlendProbe/StateBlendProbe），用于调试混合过程"))
+		meta = (DisplayName = "混合探针日志(Log)",
+			ToolTip = "将混合权重探针日志（EffectBlendProbe/StateBlendProbe）输出到Log窗口，用于调试混合过程"))
 	bool bEnableBlendProbeLog{false};
 
-	/** 是否启用警告日志（Warning级别） */
+	/** 是否启用混合探针日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "混合探针日志(屏幕)",
+			ToolTip = "将混合权重探针日志（EffectBlendProbe/StateBlendProbe）输出到屏幕，用于调试混合过程"))
+	bool bEnableBlendProbeLogOnScreen{false};
+
+	/** 是否启用警告日志输出到Log（Warning级别） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (DisplayName = "警告日志",
-			ToolTip = "打印警告级别日志（默认开启，建议保持开启）"))
-	bool bEnableWarningLog{true};
+		meta = (DisplayName = "警告日志(Log)",
+			ToolTip = "将警告级别日志输出到Log窗口\n• 按需开启，用于调试警告信息"))
+	bool bEnableWarningLog{false};
 
-	// ========== 屏幕日志输出 ==========
+	/** 是否启用警告日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "警告日志(屏幕)",
+			ToolTip = "将警告级别日志输出到屏幕\n• 按需开启，用于调试警告信息"))
+	bool bEnableWarningLogOnScreen{false};
 
-	/** 是否启用屏幕日志输出 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|OnScreen",
-		meta = (DisplayName = "启用屏幕日志",
-			ToolTip = "是否在屏幕上显示日志信息\n• 勾选后会在屏幕上显示相机系统日志\n• 用于实时调试相机状态\n• 发布时建议关闭"))
-	bool bEnableOnScreenLog{false};
+	/** 是否启用输入打断日志输出到Log（角度累积、打断触发等） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
+		meta = (DisplayName = "输入打断日志(Log)",
+			ToolTip = "将输入打断相关日志输出到Log窗口\n• 包括角度累积过程、打断触发、衰减过程等\n• 用于调试玩家输入打断相机效果的逻辑\n• 建议在调试打断功能时开启"))
+	bool bEnableInputInterruptLog{false};
+
+	/** 是否启用输入打断日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "输入打断日志(屏幕)",
+			ToolTip = "将输入打断相关日志输出到屏幕\n• 包括角度累积过程、打断触发、衰减过程等\n• 用于调试玩家输入打断相机效果的逻辑\n• 建议在调试打断功能时开启"))
+	bool bEnableInputInterruptLogOnScreen{false};
+
+	/** 是否启用相机信息日志输出到Log（关键相机参数） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
+		meta = (DisplayName = "相机信息日志(Log)",
+			ToolTip = "将关键相机信息日志输出到Log窗口\n• 包括相机位置、旋转、枢轴点、吊臂参数等\n• 用于调试相机状态和参数变化\n• 建议在调试相机行为时开启"))
+	bool bEnableCameraInfoLog{false};
+
+	/** 是否启用相机信息日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (DisplayName = "相机信息日志(屏幕)",
+			ToolTip = "将关键相机信息日志输出到屏幕\n• 包括相机位置、旋转、枢轴点、吊臂参数等\n• 用于调试相机状态和参数变化\n• 建议在调试相机行为时开启"))
+	bool bEnableCameraInfoLogOnScreen{false};
+
+	// ========== DrawDebug 可视化 ==========
+
+	/** 是否启用 DrawDebug 绘制（全局开关） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DrawDebug",
+		meta = (DisplayName = "启用 DrawDebug 绘制",
+			ToolTip = "全局开关，开启后允许绘制相机相关的可视化信息\n• 包括 PivotLocation、CameraLocation、ArmLength 等\n• 用于调试相机位置和参数\n• 发布时建议关闭"))
+	bool bEnableDrawDebug{false};
+
+	/** 是否绘制 PivotLocation（枢轴点位置） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DrawDebug",
+		meta = (DisplayName = "绘制枢轴点",
+			EditCondition = "bEnableDrawDebug",
+			ToolTip = "绘制 PivotLocation（绿色球体）\n• 枢轴点是相机围绕旋转的中心点\n• 通常是角色位置\n• 按需开启"))
+	bool bDrawPivotLocation{false};
+
+	/** 是否绘制 CameraLocation（相机位置） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DrawDebug",
+		meta = (DisplayName = "绘制相机位置",
+			EditCondition = "bEnableDrawDebug",
+			ToolTip = "绘制 CameraLocation（蓝色球体）\n• 默认关闭，避免遮挡画面"))
+	bool bDrawCameraLocation{false};
+
+	/** 是否绘制相机方向（Forward/Right/Up 箭头） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DrawDebug",
+		meta = (DisplayName = "绘制相机方向",
+			EditCondition = "bEnableDrawDebug",
+			ToolTip = "绘制相机的前、右、上方向箭头\n• 红色：前方向（Forward）\n• 绿色：右方向（Right）\n• 蓝色：上方向（Up）\n• 按需开启"))
+	bool bDrawCameraDirection{false};
+
+	/** 是否绘制吊臂信息（ArmLength、ArmRotation） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DrawDebug",
+		meta = (DisplayName = "绘制吊臂信息",
+			EditCondition = "bEnableDrawDebug",
+			ToolTip = "绘制吊臂相关信息\n• 从 PivotLocation 到 CameraLocation 的连线\n• 吊臂长度和旋转信息\n• 按需开启"))
+	bool bDrawArmInfo{false};
+
+	/** DrawDebug 绘制持续时间（秒，0=仅一帧） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DrawDebug",
+		meta = (DisplayName = "绘制持续时间",
+			EditCondition = "bEnableDrawDebug",
+			ToolTip = "绘制持续时间（秒）\n• 0 表示只绘制一帧\n• >0 表示持续绘制指定秒数"))
+	float DrawDebugDuration{0.0f};
+
+	/** DrawDebug 线宽 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DrawDebug",
+		meta = (DisplayName = "线宽",
+			EditCondition = "bEnableDrawDebug",
+			ClampMin = "0.5", ClampMax = "8.0",
+			ToolTip = "DrawDebug 绘制的线宽"))
+	float DrawDebugThickness{2.0f};
+
+	// ========== 屏幕日志配置 ==========
 
 	/** 屏幕日志显示时长（秒，0表示持续显示） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|OnScreen",
 		meta = (DisplayName = "屏幕日志显示时长",
-			EditCondition = "bEnableOnScreenLog",
 			ToolTip = "屏幕日志在屏幕上的显示时长（秒）\n• 0表示持续显示（每帧刷新）\n• 大于0表示显示指定秒数后自动消失"))
 	float OnScreenLogDuration{0.0f};
 
 	/** 屏幕日志文本颜色 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|OnScreen",
 		meta = (DisplayName = "屏幕日志文本颜色",
-			EditCondition = "bEnableOnScreenLog",
 			ToolTip = "屏幕日志在屏幕上显示的颜色"))
 	FLinearColor OnScreenLogTextColor{FLinearColor::Green};
 
@@ -173,10 +288,68 @@ public:
 	/** 检查是否应该打印警告日志 */
 	static bool ShouldLogWarning();
 
+	/** 检查是否应该打印输入打断日志 */
+	static bool ShouldLogInputInterrupt();
+
+	/** 检查是否应该打印相机信息日志 */
+	static bool ShouldLogCameraInfo();
+
 	// ========== 屏幕日志检查方法 ==========
 
-	/** 检查是否应该显示屏幕日志 */
-	static bool ShouldShowOnScreenLog();
+	/** 检查是否应该将效果日志输出到屏幕 */
+	static bool ShouldLogEffectOnScreen();
+
+	/** 检查是否应该将State计算日志输出到屏幕 */
+	static bool ShouldLogStateCalculationOnScreen();
+
+	/** 检查是否应该将ANS日志输出到屏幕 */
+	static bool ShouldLogANSOnScreen();
+
+	/** 检查是否应该将组件日志输出到屏幕 */
+	static bool ShouldLogComponentOnScreen();
+
+	/** 检查是否应该将模式日志输出到屏幕 */
+	static bool ShouldLogModeOnScreen();
+
+	/** 检查是否应该将库函数日志输出到屏幕 */
+	static bool ShouldLogLibraryOnScreen();
+
+	/** 检查是否应该将混合探针日志输出到屏幕 */
+	static bool ShouldLogBlendProbeOnScreen();
+
+	/** 检查是否应该将警告日志输出到屏幕 */
+	static bool ShouldLogWarningOnScreen();
+
+	/** 检查是否应该将输入打断日志输出到屏幕 */
+	static bool ShouldLogInputInterruptOnScreen();
+
+	/** 检查是否应该将相机信息日志输出到屏幕 */
+	static bool ShouldLogCameraInfoOnScreen();
+
+	// ========== DrawDebug 检查方法 ==========
+
+	/** 检查是否应该启用 DrawDebug 绘制 */
+	static bool ShouldEnableDrawDebug();
+
+	/** 检查是否应该绘制 PivotLocation */
+	static bool ShouldDrawPivotLocation();
+
+	/** 检查是否应该绘制 CameraLocation */
+	static bool ShouldDrawCameraLocation();
+
+	/** 检查是否应该绘制相机方向 */
+	static bool ShouldDrawCameraDirection();
+
+	/** 检查是否应该绘制吊臂信息 */
+	static bool ShouldDrawArmInfo();
+
+
+	/** 获取 DrawDebug 绘制持续时间 */
+	static float GetDrawDebugDuration();
+
+	/** 获取 DrawDebug 线宽 */
+	static float GetDrawDebugThickness();
+
 
 	/** 获取屏幕日志显示时长 */
 	static float GetOnScreenLogDuration();

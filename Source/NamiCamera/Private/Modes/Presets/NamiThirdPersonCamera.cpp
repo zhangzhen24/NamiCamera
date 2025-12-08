@@ -8,6 +8,7 @@
 #include "Components/NamiCameraComponent.h"
 #include "Libraries/NamiCameraMath.h"
 #include "Features/NamiSpringArmFeature.h"
+#include "LogNamiCamera.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiThirdPersonCamera)
 
@@ -27,7 +28,6 @@ UNamiThirdPersonCamera::UNamiThirdPersonCamera()
 	PivotHeightOffset = 80.0f;
 
 	// 平滑强度配置（默认关闭平滑）
-	PivotSmoothIntensity = 0.0f;
 	CameraLocationSmoothIntensity = 0.0f;
 	CameraRotationSmoothIntensity = 0.0f;
 
@@ -124,6 +124,9 @@ FNamiCameraView UNamiThirdPersonCamera::CalculateView_Implementation(float Delta
 		ControlRotation.Roll = 0.0f;
 	}
 
+	// 使用0-360度归一化，避免180/-180跳变问题
+	ControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
+
 	// 3. 创建基础视图
 	FNamiCameraView View;
 	View.PivotLocation = TargetPivot;
@@ -165,6 +168,8 @@ FNamiCameraView UNamiThirdPersonCamera::CalculateView_Implementation(float Delta
 	{
 		FinalRotation.Roll = 0.0f;
 	}
+	// 使用0-360度归一化，避免180/-180跳变问题
+	FinalRotation = FNamiCameraMath::NormalizeRotatorTo360(FinalRotation);
 	View.CameraRotation = FinalRotation;
 	View.ControlRotation = FinalRotation;
 
@@ -211,7 +216,8 @@ FRotator UNamiThirdPersonCamera::CalculateCameraRotation_Implementation(
 		ControlRotation.Roll = 0.0f;
 	}
 
-	return ControlRotation;
+	// 使用0-360度归一化，避免180/-180跳变问题
+	return FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
 }
 
 UNamiSpringArmFeature* UNamiThirdPersonCamera::GetSpringArmFeature() const
@@ -306,7 +312,6 @@ void UNamiThirdPersonCamera::ApplyCameraPreset(ENamiThirdPersonCameraPreset Pres
 		MouseSensitivity = 0.8f;
 		// 启用父类的平滑
 		bEnableSmoothing = true;
-		PivotSmoothIntensity = 0.3f;
 		CameraLocationSmoothIntensity = 0.4f;
 		CameraRotationSmoothIntensity = 0.2f;
 		UE_LOG(LogNamiCamera, Log, TEXT("[UNamiThirdPersonCamera] 应用预设：电影感"));
@@ -347,7 +352,9 @@ FRotator UNamiThirdPersonCamera::GetControlRotation() const
 		if (IsValid(OwnerPawn))
 		{
 			FRotator ControlRot = OwnerPawn->GetControlRotation();
-			LastValidControlRotation = ControlRot; // 缓存有效旋转
+			// 使用0-360度归一化，避免180/-180跳变问题
+			ControlRot = FNamiCameraMath::NormalizeRotatorTo360(ControlRot);
+			LastValidControlRotation = ControlRot; // 缓存归一化后的旋转
 			return ControlRot;
 		}
 
@@ -356,12 +363,15 @@ FRotator UNamiThirdPersonCamera::GetControlRotation() const
 		if (IsValid(PC))
 		{
 			FRotator ControlRot = PC->GetControlRotation();
-			LastValidControlRotation = ControlRot; // 缓存有效旋转
+			// 使用0-360度归一化，避免180/-180跳变问题
+			ControlRot = FNamiCameraMath::NormalizeRotatorTo360(ControlRot);
+			LastValidControlRotation = ControlRot; // 缓存归一化后的旋转
 			return ControlRot;
 		}
 	}
 
 	// 后备：返回上一次有效的旋转，避免相机突然跳转
 	// 如果从未获取过有效旋转，则返回零旋转
-	return LastValidControlRotation;
+	// 确保缓存的旋转也是归一化的
+	return FNamiCameraMath::NormalizeRotatorTo360(LastValidControlRotation);
 }

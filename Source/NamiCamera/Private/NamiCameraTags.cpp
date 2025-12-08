@@ -12,6 +12,3 @@ UE_DEFINE_GAMEPLAY_TAG_COMMENT(Tag_Camera_Feature_ManualCleanup, "Camera.Feature
 UE_DEFINE_GAMEPLAY_TAG_COMMENT(Tag_Camera_Feature_Source_ANS_CameraAdjust, "Camera.Feature.Source.ANS.CameraAdjust",
 	"标识由 AnimNotifyState_CameraAdjust 创建的 Feature");
 
-UE_DEFINE_GAMEPLAY_TAG_COMMENT(Tag_Camera_Feature_Source_ANS_BattleCamera, "Camera.Feature.Source.ANS.BattleCamera",
-	"标识由 AnimNotifyState_BattleCamera 创建的 Feature");
-

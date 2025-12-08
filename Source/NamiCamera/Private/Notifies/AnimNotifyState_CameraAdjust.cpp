@@ -2,6 +2,7 @@
 
 #include "Notifies/AnimNotifyState_CameraAdjust.h"
 #include "Features/NamiCameraAdjustFeature.h"
+#include "Features/NamiCameraShakeFeature.h"
 #include "Modes/NamiCameraModeBase.h"
 #include "Features/NamiCameraFeature.h"
 #include "Components/NamiCameraComponent.h"
@@ -9,6 +10,7 @@
 #include "NamiCameraTags.h"
 #include "LogNamiCamera.h"
 #include "LogNamiCameraMacros.h"
+#include "Logging/MessageLog.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(AnimNotifyState_CameraAdjust)
 
@@ -50,22 +52,31 @@ void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp
 		return;
 	}
 
-	// 检查是否有任何修改
-	if (!AdjustConfig.HasAnyModification())
+	// 生成唯一的效果名称（基于动画和实例）
+	const FName StateEffectName = GenerateUniqueEffectName(Animation, TEXT("_State"));
+	const FName ShakeEffectName = GenerateUniqueEffectName(Animation, TEXT("_Shake"));
+
+	// 构建修改配置
+	FNamiCameraStateModify StateModifyConfig = BuildStateModify();
+
+	// 检查是否有任何修改或震动
+	if (!StateModifyConfig.HasAnyModification() && !CameraShake)
 	{
-		NAMI_LOG_WARNING(TEXT("[ANS_CameraAdjust] NotifyBegin: 未配置任何相机修改，跳过创建"));
+		NAMI_LOG_WARNING(TEXT("[ANS_CameraAdjust] NotifyBegin: 未配置任何相机修改或震动，跳过创建"));
 		return;
 	}
 
-	// ========== 创建 AdjustFeature ==========
-	const FName EffectName = GenerateUniqueEffectName(Animation);
-	ActiveAdjustFeature = CreateAdjustFeature(CameraComponent, EffectName, TotalDuration);
+	// 互斥处理：按开关清理旧效果
+	ClearExistingEffects(CameraComponent, ActiveMode, StateEffectName, ShakeEffectName);
 
-	if (ActiveAdjustFeature.IsValid())
-	{
-		NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] NotifyBegin: 激活相机调整效果，效果名称: %s, 混入时间: %.2f, 总时长: %.2f"),
-			*EffectName.ToString(), BlendInTime, TotalDuration);
-	}
+	// ========== 创建 AdjustFeature ==========
+	ActiveAdjustFeature = CreateAdjustFeature(CameraComponent, StateEffectName, TotalDuration);
+
+	// ========== 创建 ShakeFeature ==========
+	ActiveShakeFeature = CreateShakeFeature(ActiveMode, ShakeEffectName);
+
+	NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] NotifyBegin: 激活相机调整效果，混入时间: %.2f, 总时长: %.2f"),
+		BlendInTime, TotalDuration);
 }
 
 void UAnimNotifyState_CameraAdjust::NotifyEnd(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation,
@@ -80,57 +91,94 @@ void UAnimNotifyState_CameraAdjust::NotifyEnd(USkeletalMeshComponent* MeshComp, 
 		return;
 	}
 
-	// 停止 AdjustFeature
+	// 停止 AdjustFeature 和 ShakeFeature
 	// 直接调用 Feature 的 Deactivate()，让 Deactivate_Implementation 中的逻辑来处理 EndBehavior
 	if (ActiveAdjustFeature.IsValid())
 	{
 		StopAdjustFeature();
-		NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] NotifyEnd: 结束相机调整效果，混出时间=%.2f"), BlendOutTime);
 	}
+	if (ActiveShakeFeature.IsValid())
+	{
+		StopShakeFeature();
+	}
+
+	NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] NotifyEnd: 结束相机调整效果，混出时间=%.2f"), BlendOutTime);
 }
 
 FString UAnimNotifyState_CameraAdjust::GetNotifyName_Implementation() const
 {
-	if (!AdjustConfig.HasAnyModification())
+	FNamiCameraStateModify StateModifyConfig = BuildStateModify();
+	
+	if (!StateModifyConfig.HasAnyModification() && !CameraShake)
 	{
 		return TEXT("相机调整");
 	}
 
 	TArray<FString> Effects;
 
-	// 检查启用的修改项
-	if (AdjustConfig.ArmLength.bEnabled)
+	// 吊臂参数
+	if (ArmLength.bEnabled)
 	{
-		if (AdjustConfig.ArmLength.BlendMode == ENamiCameraBlendMode::Additive)
+		if (ArmLength.BlendMode == ENamiCameraBlendMode::Additive)
 		{
-			Effects.Add(FString::Printf(TEXT("距离%+.0f"), AdjustConfig.ArmLength.Value));
+			Effects.Add(FString::Printf(TEXT("距离%+.0f"), -ArmLength.Value));
 		}
 		else
 		{
-			Effects.Add(FString::Printf(TEXT("距离=%.0f"), AdjustConfig.ArmLength.Value));
+			Effects.Add(FString::Printf(TEXT("距离=%.0f"), ArmLength.Value));
 		}
 	}
-
-	if (AdjustConfig.ArmRotation.bEnabled)
+	if (ArmRotation.bEnabled)
 	{
 		Effects.Add(TEXT("吊臂旋转"));
 	}
-
-	if (AdjustConfig.CameraRotationOffset.bEnabled)
+	if (CameraRotationOffset.bEnabled)
 	{
 		Effects.Add(TEXT("视角偏移"));
 	}
-
-	if (AdjustConfig.FieldOfView.bEnabled)
+	if (FieldOfView.bEnabled)
 	{
-		if (AdjustConfig.FieldOfView.BlendMode == ENamiCameraBlendMode::Additive)
+		if (FieldOfView.BlendMode == ENamiCameraBlendMode::Additive)
 		{
-			Effects.Add(FString::Printf(TEXT("FOV%+.0f"), AdjustConfig.FieldOfView.Value));
+			Effects.Add(FString::Printf(TEXT("FOV%+.0f"), FieldOfView.Value));
 		}
 		else
 		{
-			Effects.Add(FString::Printf(TEXT("FOV=%.0f"), AdjustConfig.FieldOfView.Value));
+			Effects.Add(FString::Printf(TEXT("FOV=%.0f"), FieldOfView.Value));
 		}
+	}
+
+	// 输入打断模式
+	if (ArmRotation.bEnabled)
+	{
+		switch (ControlMode)
+		{
+		case ENamiCameraControlMode::Suggestion:
+			Effects.Add(TEXT("可打断"));
+			break;
+		case ENamiCameraControlMode::Forced:
+			Effects.Add(TEXT("强制"));
+			break;
+		case ENamiCameraControlMode::Blended:
+			Effects.Add(TEXT("混合"));
+			break;
+		}
+	}
+
+	// 输出结果
+	if (CameraLocation.bEnabled)
+	{
+		Effects.Add(TEXT("最终位置"));
+	}
+	if (CameraRotation.bEnabled)
+	{
+		Effects.Add(TEXT("最终旋转"));
+	}
+
+	// 效果
+	if (CameraShake)
+	{
+		Effects.Add(TEXT("震动"));
 	}
 
 	if (Effects.Num() > 0)
@@ -141,15 +189,151 @@ FString UAnimNotifyState_CameraAdjust::GetNotifyName_Implementation() const
 	return TEXT("相机调整");
 }
 
-UNamiCameraAdjustFeature* UAnimNotifyState_CameraAdjust::CreateAdjustFeature(UNamiCameraComponent* CameraComponent, const FName& EffectName, float TotalDuration)
+FNamiCameraStateModify UAnimNotifyState_CameraAdjust::BuildStateModify() const
+{
+	FNamiCameraStateModify StateModify;
+
+	// 枢轴点参数
+	StateModify.PivotLocation = PivotLocation;
+	StateModify.PivotRotation = PivotRotation;
+
+	// 吊臂参数
+	StateModify.ArmLength = ArmLength;
+	StateModify.ArmRotation = ArmRotation;
+	StateModify.ArmOffset = ArmOffset;
+
+	// 输入控制设置
+	StateModify.bAllowPlayerInput = bAllowPlayerInput;
+	
+	// 输入打断设置（应用到 ArmRotation，仅在 bAllowPlayerInput = false 时生效）
+	if (ArmRotation.bEnabled && !bAllowPlayerInput)
+	{
+		StateModify.ControlMode = ControlMode;
+		StateModify.CameraInputThreshold = CameraInputThreshold;
+	}
+
+	// 相机参数
+	StateModify.CameraLocationOffset = CameraLocationOffset;
+	StateModify.CameraRotationOffset = CameraRotationOffset;
+	StateModify.FieldOfView = FieldOfView;
+
+	// 输出结果
+	StateModify.CameraLocation = CameraLocation;
+	StateModify.CameraRotation = CameraRotation;
+
+	// 混出设置
+	StateModify.bPreserveCameraRotationOnExit = bPreserveCameraRotationOnExit;
+
+	return StateModify;
+}
+
+void UAnimNotifyState_CameraAdjust::ClearExistingEffects(UNamiCameraComponent* CameraComponent, UNamiCameraModeBase* ActiveMode, const FName& StateEffectName, const FName& ShakeEffectName) const
+{
+	if (!CameraComponent || !ActiveMode)
+	{
+		return;
+	}
+
+	// 从 GlobalFeatures 移除 AdjustFeature
+	auto RemoveAdjustFeatureByName = [CameraComponent](const FName& FeatureName)
+	{
+		if (UNamiCameraFeature* Existing = CameraComponent->FindGlobalFeatureByName(FeatureName))
+		{
+			if (UNamiCameraAdjustFeature* Adjust = Cast<UNamiCameraAdjustFeature>(Existing))
+			{
+				Adjust->DeactivateEffect(true);
+				CameraComponent->RemoveGlobalFeature(Adjust);
+				return;
+			}
+		}
+	};
+
+	// 从 Mode 移除 ShakeFeature
+	auto RemoveShakeFeatureByName = [ActiveMode](const FName& FeatureName)
+	{
+		if (UNamiCameraFeature* Existing = ActiveMode->GetFeatureByName(FeatureName))
+		{
+			if (UNamiCameraShakeFeature* Shake = Cast<UNamiCameraShakeFeature>(Existing))
+			{
+				Shake->StopShake(true);
+				ActiveMode->RemoveFeature(Shake);
+				return;
+			}
+		}
+	};
+
+	// 同名互斥
+	RemoveAdjustFeatureByName(StateEffectName);
+	RemoveShakeFeatureByName(ShakeEffectName);
+
+	// 可选整清
+	if (bStopExistingEffects)
+	{
+		// 从 GlobalFeatures 移除所有 AdjustFeature
+		TArray<UNamiCameraFeature*> GlobalFeaturesToRemove;
+		for (UNamiCameraFeature* Feature : CameraComponent->GetGlobalFeatures())
+		{
+			if (!IsValid(Feature))
+			{
+				continue;
+			}
+
+			if (Feature->IsA<UNamiCameraAdjustFeature>())
+			{
+				GlobalFeaturesToRemove.Add(Feature);
+			}
+		}
+		for (UNamiCameraFeature* Feature : GlobalFeaturesToRemove)
+		{
+			if (UNamiCameraAdjustFeature* Adjust = Cast<UNamiCameraAdjustFeature>(Feature))
+			{
+				Adjust->DeactivateEffect(true);
+				CameraComponent->RemoveGlobalFeature(Adjust);
+			}
+		}
+
+		// 从 Mode 移除所有 ShakeFeature
+		TArray<UNamiCameraFeature*> ModeFeaturesToRemove;
+		for (UNamiCameraFeature* Feature : ActiveMode->GetFeatures())
+		{
+			if (!IsValid(Feature))
+			{
+				continue;
+			}
+
+			if (Feature->IsA<UNamiCameraShakeFeature>())
+			{
+				ModeFeaturesToRemove.Add(Feature);
+			}
+		}
+		for (UNamiCameraFeature* Feature : ModeFeaturesToRemove)
+		{
+			if (UNamiCameraShakeFeature* Shake = Cast<UNamiCameraShakeFeature>(Feature))
+			{
+				Shake->StopShake(true);
+				ActiveMode->RemoveFeature(Shake);
+			}
+		}
+
+		NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] 清理已有相机效果（bStopExistingEffects=true）"));
+	}
+}
+
+UNamiCameraAdjustFeature* UAnimNotifyState_CameraAdjust::CreateAdjustFeature(UNamiCameraComponent* CameraComponent, const FName& StateEffectName, float TotalDuration)
 {
 	if (!CameraComponent)
 	{
 		return nullptr;
 	}
 
+	FNamiCameraStateModify StateModifyConfig = BuildStateModify();
+	if (!StateModifyConfig.HasAnyModification())
+	{
+		return nullptr;
+	}
+
 	// 检查是否已存在同名 GlobalFeature
-	UNamiCameraFeature* ExistingFeature = CameraComponent->FindGlobalFeatureByName(EffectName);
+	UNamiCameraFeature* ExistingFeature = CameraComponent->FindGlobalFeatureByName(StateEffectName);
 	if (ExistingFeature)
 	{
 		if (UNamiCameraAdjustFeature* ExistingAdjust = Cast<UNamiCameraAdjustFeature>(ExistingFeature))
@@ -176,18 +360,18 @@ UNamiCameraAdjustFeature* UAnimNotifyState_CameraAdjust::CreateAdjustFeature(UNa
 	}
 
 	// 配置基本属性
-	AdjustFeature->FeatureName = EffectName;
+	AdjustFeature->FeatureName = StateEffectName;
 	AdjustFeature->Priority = 100;  // 高优先级，在其他 Feature 之后应用
 
 	// 配置调整参数
-	AdjustFeature->AdjustConfig = AdjustConfig;
+	AdjustFeature->AdjustConfig = StateModifyConfig;
 
 	// 配置生命周期
 	// 如果结束行为是 Stay，Duration 应该设置为 0（无限），否则使用动画总时长
 	if (EndBehavior == ENamiCameraEndBehavior::Stay)
 	{
 		AdjustFeature->Duration = 0.0f;  // 无限，需要手动停止
-		
+
 		// 添加手动清理 Tag，用于后续手动清理
 		FGameplayTag TagToAdd = StayTag;
 		if (!TagToAdd.IsValid())
@@ -199,7 +383,7 @@ UNamiCameraAdjustFeature* UAnimNotifyState_CameraAdjust::CreateAdjustFeature(UNa
 		{
 			AdjustFeature->Tags.AddTag(TagToAdd);
 		}
-		
+
 		// 可选：添加来源标识 Tag
 		if (SourceTag.IsValid())
 		{
@@ -218,12 +402,55 @@ UNamiCameraAdjustFeature* UAnimNotifyState_CameraAdjust::CreateAdjustFeature(UNa
 	AdjustFeature->BlendInTime = BlendInTime;
 	AdjustFeature->BlendOutTime = BlendOutTime;
 	AdjustFeature->EndBehavior = EndBehavior;
+	
+	// 配置平滑设置
+	AdjustFeature->MaxPivotRotationSpeed = MaxPivotRotationSpeed;
 
 	// 添加到 GlobalFeatures（而不是 Mode）
 	CameraComponent->AddGlobalFeature(AdjustFeature);
 	AdjustFeature->ActivateEffect(false);
 
+	NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] 创建 AdjustFeature 成功，效果名称: %s, Duration=%.2f"),
+		*StateEffectName.ToString(), AdjustFeature->Duration);
+
+	if ((BlendInTime + BlendOutTime) > (TotalDuration + KINDA_SMALL_NUMBER) && TotalDuration > 0.0f)
+	{
+		NAMI_LOG_ANS(Warning, TEXT("[ANS_CameraAdjust] BlendIn+BlendOut(%.2f) 大于动画时长(%.2f)，可能导致镜头提前/延后退出"),
+			BlendInTime + BlendOutTime, TotalDuration);
+	}
+
 	return AdjustFeature;
+}
+
+UNamiCameraShakeFeature* UAnimNotifyState_CameraAdjust::CreateShakeFeature(UNamiCameraModeBase* ActiveMode, const FName& ShakeEffectName)
+{
+	if (!ActiveMode || !CameraShake)
+	{
+		return nullptr;
+	}
+
+	UNamiCameraShakeFeature* ShakeFeature = NewObject<UNamiCameraShakeFeature>(ActiveMode);
+	if (!ShakeFeature)
+	{
+		return nullptr;
+	}
+
+	// 配置基本属性
+	ShakeFeature->FeatureName = ShakeEffectName;
+	ShakeFeature->Priority = 10;  // 低优先级，在其他 Feature 之前应用
+
+	// 配置震动参数
+	ShakeFeature->CameraShake = CameraShake;
+	ShakeFeature->ShakeScale = ShakeScale;
+
+	// 添加到 Mode
+	ActiveMode->AddFeature(ShakeFeature);
+	ShakeFeature->Activate();
+
+	NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] 创建震动Feature成功：%s，强度：%.2f"),
+		*CameraShake->GetName(), ShakeScale);
+
+	return ShakeFeature;
 }
 
 void UAnimNotifyState_CameraAdjust::StopAdjustFeature()
@@ -252,19 +479,70 @@ void UAnimNotifyState_CameraAdjust::StopAdjustFeature()
 	ActiveAdjustFeature = nullptr;
 }
 
-FName UAnimNotifyState_CameraAdjust::GenerateUniqueEffectName(const UAnimSequenceBase* Animation) const
+FName UAnimNotifyState_CameraAdjust::GenerateUniqueEffectName(const UAnimSequenceBase* Animation, const FString& Suffix) const
 {
 	if (!Animation)
 	{
-		return FName(*FString::Printf(TEXT("ANS_CameraAdjust_%08X"), GetUniqueID()));
+		return FName(*FString::Printf(TEXT("ANS_CameraAdjust%s"), *Suffix));
 	}
 
-	// 生成唯一名称：ANS_动画名_实例ID
+	// 生成唯一名称：ANS_动画名_后缀_实例ID
 	FString AnimationName = Animation->GetName();
-	FString UniqueName = FString::Printf(TEXT("ANS_%s_CameraAdjust_%08X"), 
-		*AnimationName, 
+	FString UniqueName = FString::Printf(TEXT("ANS_%s%s_%08X"),
+		*AnimationName,
+		*Suffix,
 		GetUniqueID());
 
 	return FName(*UniqueName);
 }
+
+void UAnimNotifyState_CameraAdjust::StopShakeFeature()
+{
+	if (!ActiveShakeFeature.IsValid())
+	{
+		return;
+	}
+
+	// 注意：ShakeFeature 没有 EndBehavior 属性，所以使用 ANS 的 EndBehavior
+	bool bForceImmediate = (EndBehavior == ENamiCameraEndBehavior::ForceEnd);
+
+	ActiveShakeFeature->StopShake(bForceImmediate);
+	NAMI_LOG_ANS(Log, TEXT("[ANS_CameraAdjust] NotifyEnd: 停止震动Feature，立即=%s"),
+		bForceImmediate ? TEXT("是") : TEXT("否"));
+
+	if (bForceImmediate)
+	{
+		if (UNamiCameraModeBase* Mode = ActiveShakeFeature->GetCameraMode())
+		{
+			Mode->RemoveFeature(ActiveShakeFeature.Get());
+		}
+	}
+
+	ActiveShakeFeature = nullptr;
+}
+
+#if WITH_EDITOR
+void UAnimNotifyState_CameraAdjust::ValidateAssociatedAssets()
+{
+	Super::ValidateAssociatedAssets();
+
+	// 至少需有一项修改或震动
+	FNamiCameraStateModify StateModifyConfig = BuildStateModify();
+	const bool bHasAnyModify = StateModifyConfig.HasAnyModification();
+	if (!bHasAnyModify && !CameraShake)
+	{
+		FMessageLog("Animation").Warning()
+			->AddToken(FTextToken::Create(NSLOCTEXT("NamiCamera", "CameraAdjust_NoEffect", "CameraAdjust: 未配置任何相机修改或震动")));
+	}
+
+	// Blend 时间校验
+	if (BlendInTime < 0.f || BlendOutTime < 0.f)
+	{
+		FMessageLog("Animation").Warning()
+			->AddToken(FTextToken::Create(NSLOCTEXT("NamiCamera", "CameraAdjust_BlendNegative", "CameraAdjust: Blend 时间不可为负")));
+	}
+
+	// 输入阈值校验
+}
+#endif
 

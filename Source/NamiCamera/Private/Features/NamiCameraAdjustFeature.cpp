@@ -3,24 +3,33 @@
 #include "Features/NamiCameraAdjustFeature.h"
 #include "Modes/NamiCameraModeBase.h"
 #include "Components/NamiCameraComponent.h"
+#include "Interfaces/NamiCameraInputProvider.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "LogNamiCamera.h"
 #include "LogNamiCameraMacros.h"
 #include "Libraries/NamiCameraMath.h"
+#include "Components/NamiCameraComponent.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraAdjustFeature)
+void UNamiCameraAdjustFeature::DeactivateEffect(bool bForceImmediate)
+{
+	Super::DeactivateEffect(bForceImmediate);
+
+	// 清理与打断/混出相关的缓存
+	bHasExitStartRotationState = false;
+	bHasExitStartCameraRotation = false;
+	bHasExitStartState = false;
+	bInputEnabledOnInterrupt = false;
+	bHasLastOutputState = false;
+	LastOutputState = FNamiCameraState();
+}
+
 
 UNamiCameraAdjustFeature::UNamiCameraAdjustFeature()
-	: bAllowInputInterruptWholeEffect(false)
-	, InterruptInputThreshold(0.1f)
-	, InterruptCooldown(0.15f)
-	, bAllowViewControlInterrupt(true)
-	, ViewControlInputThreshold(0.1f)
-	, bHasCachedInitialState(false)
-	, InputInterruptCooldownTimer(0.0f)
-	, bViewControlInterrupted(false)
-	, LastCameraInputMagnitude(0.0f)
+	: bHasCachedInitialState(false)
+	, LastPivotRotation(FRotator::ZeroRotator)
+	, bHasLastPivotRotation(false)
 {
 	FeatureName = TEXT("CameraAdjust");
 	Priority = 100;  // 高优先级，在其他 Feature 之后应用
@@ -29,24 +38,6 @@ UNamiCameraAdjustFeature::UNamiCameraAdjustFeature()
 void UNamiCameraAdjustFeature::Initialize_Implementation(UNamiCameraModeBase* InCameraMode)
 {
 	Super::Initialize_Implementation(InCameraMode);
-	
-	// 初始化缓存的引用
-	UpdateCachedReferences();
-	
-	// 尝试自动设置输入提供者
-	if (!InputProvider.GetObject())
-	{
-		UNamiCameraComponent* CameraComponent = InCameraMode ? InCameraMode->GetCameraComponent() : nullptr;
-		if (CameraComponent)
-		{
-			APlayerController* PC = CameraComponent->GetOwnerPlayerController();
-			if (PC && PC->GetClass()->ImplementsInterface(UNamiCameraInputProvider::StaticClass()))
-			{
-				InputProvider.SetObject(PC);
-				InputProvider.SetInterface(Cast<INamiCameraInputProvider>(PC));
-			}
-		}
-	}
 }
 
 void UNamiCameraAdjustFeature::Activate_Implementation()
@@ -55,25 +46,67 @@ void UNamiCameraAdjustFeature::Activate_Implementation()
 	
 	// 重置状态
 	bHasCachedInitialState = false;
-	bViewControlInterrupted = false;
-	InputInterruptCooldownTimer = 0.0f;
-	LastCameraInputMagnitude = 0.0f;
-	
-	// 更新缓存的引用
-	UpdateCachedReferences();
+	bHasLastPivotRotation = false;
+	LastPivotRotation = FRotator::ZeroRotator;
+	bHasLastCharacterRotation = false;
+	LastCharacterRotation = FRotator::ZeroRotator;
+	bInputVectorCacheValid = false;
+	bInputMagnitudeCacheValid = false;
+	InputAccumulationTime = 0.0f;
+	bInputEnabledOnInterrupt = false;
 }
 
 void UNamiCameraAdjustFeature::Update_Implementation(float DeltaTime)
 {
 	Super::Update_Implementation(DeltaTime);
 	
-	// 更新缓存的引用
-	UpdateCachedReferences();
+	// 重置输入缓存（每帧重新计算）
+	bInputVectorCacheValid = false;
+	bInputMagnitudeCacheValid = false;
 	
-	// 更新输入打断冷却计时器
-	if (InputInterruptCooldownTimer > 0.0f)
+	// 检查是否需要输入打断（仅在 bAllowPlayerInput==false 时检查）
+	if (IsActive() && !IsExiting() && !AdjustConfig.bAllowPlayerInput)
 	{
-		InputInterruptCooldownTimer = FMath::Max(0.0f, InputInterruptCooldownTimer - DeltaTime);
+		// 检查条件：ArmRotation 必须启用，且 ControlMode 必须是 Suggestion
+		if (AdjustConfig.ArmRotation.bEnabled && 
+			AdjustConfig.ControlMode == ENamiCameraControlMode::Suggestion)
+		{
+			float InputMagnitude = GetPlayerCameraInputMagnitude();
+			
+			// 检查是否超过阈值
+			if (InputMagnitude > AdjustConfig.CameraInputThreshold)
+			{
+				// 累积输入时间
+				InputAccumulationTime += DeltaTime;
+				
+				// 立即触发打断（可以根据需要改为累积触发）
+				// 开启玩家输入，允许玩家控制旋转
+				AdjustConfig.bAllowPlayerInput = true;
+				bInputEnabledOnInterrupt = true;
+				
+				// 触发打断，开始混出
+				DeactivateEffect(false);  // false = 平滑混出，不是立即停止
+				InputAccumulationTime = 0.0f;  // 重置累积时间
+				
+				NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[CameraAdjust] 检测到玩家输入，触发打断。输入大小=%.3f，阈值=%.3f"),
+					InputMagnitude, AdjustConfig.CameraInputThreshold);
+			}
+			else
+			{
+				// 输入低于阈值，重置累积时间
+				InputAccumulationTime = 0.0f;
+			}
+		}
+		else
+		{
+			// 不需要检查打断，重置累积时间
+			InputAccumulationTime = 0.0f;
+		}
+	}
+	else
+	{
+		// 不在激活状态、正在退出或允许玩家输入，重置累积时间
+		InputAccumulationTime = 0.0f;
 	}
 }
 
@@ -85,65 +118,239 @@ void UNamiCameraAdjustFeature::ApplyEffect_Implementation(FNamiCameraView& InOut
 		return;
 	}
 
-	// 检查视角控制输入打断
-	if (bAllowViewControlInterrupt && !bViewControlInterrupted && 
-		AdjustConfig.ControlRotationOffset.bEnabled && 
-		AdjustConfig.ControlMode != ENamiCameraControlMode::Forced)
-	{
-		CheckViewControlInterrupt();
-	}
+	// ========== 分支判定 ==========
+	const bool bIsExitingNow = IsExiting();
+	const bool bInterruptBlendOut = bIsExitingNow && bInputEnabledOnInterrupt;
+	const bool bIsFirstFrameOfExit = bIsExitingNow && !bHasExitStartState;
 
-	// 检查整段效果输入打断
-	if (bAllowInputInterruptWholeEffect && !bIsExiting)
-	{
-		CheckWholeEffectInterrupt(DeltaTime);
-	}
+	// 基础视图（CameraMode输出）供混出目标使用
+	FNamiCameraState BaseState = BuildCurrentStateFromView(InOutView, DeltaTime);
+	BaseState.PivotLocation = GetPivotLocation(InOutView);
 
-	// 如果还没有构建初始状态，先构建
-	if (!bHasCachedInitialState)
+	// 在混入的第一帧，保存基础状态（不包含 AdjustConfig 效果）
+	// 这个状态将用于混出时的目标状态
+	if (!bIsExitingNow && Weight < 0.01f && !bHasCachedInitialState)
 	{
-		FVector PivotLocation = GetPivotLocation(InOutView);
-		CachedInitialState = BuildInitialStateFromView(InOutView);
-		CachedInitialState.PivotLocation = PivotLocation;
+		CachedInitialState = BaseState;
 		bHasCachedInitialState = true;
 	}
 
-	// 使用初始状态作为基础
-	FNamiCameraState CurrentState = CachedInitialState;
-	
-	// 更新枢轴位置（角色可能移动了）
-	CurrentState.PivotLocation = GetPivotLocation(InOutView);
+	FNamiCameraState CurrentViewState;
+	FNamiCameraState TargetState;
+	bool bFreezeRotations = false;
 
-	// 应用调整配置到 State
-	ApplyAdjustConfigToState(CurrentState, Weight);
-
-	// 计算输出
-	CurrentState.ComputeOutput();
-
-	// 从 State 计算视图
-	FNamiCameraView TargetView;
-	ComputeViewFromState(CurrentState, TargetView);
-
-	// 从当前视图混合到目标视图
-	// Weight 从 0.0 升到 1.0（表示效果的程度）
-	// 当 Weight = 0.0 时，完全使用当前视图（效果未生效）
-	// 当 Weight = 1.0 时，完全使用 TargetView（效果完全生效）
-	InOutView.Blend(TargetView, Weight);
-}
-
-bool UNamiCameraAdjustFeature::CheckInputInterrupt() const
-{
-	// 检查整段效果输入打断
-	if (bAllowInputInterruptWholeEffect)
+	// 根据是否混出决定起点和终点
+	if (bIsExitingNow)
 	{
-		float InputMagnitude = GetPlayerCameraInputMagnitude();
-		return InputMagnitude > InterruptInputThreshold;
+		// 混出：根据是否有输入打断进行不同处理
+		if (bInterruptBlendOut)
+		{
+			// 2.2 有输入打断：只混合位置参数，旋转交给玩家控制
+			// 在混出的第一帧，保存当前状态作为混出起点（已经包含 AdjustConfig 效果）
+			if (!bHasExitStartState)
+			{
+				// 优先使用上一帧的输出状态（已经包含 AdjustConfig 效果）
+				if (bHasLastOutputState)
+				{
+					ExitStartState = LastOutputState;
+				}
+				else
+				{
+					// 从当前视图反推（当前视图已经包含 AdjustConfig 效果）
+					ExitStartState = BaseState;
+				}
+				bHasExitStartState = true;
+				
+				// 保存进入混出状态时的相机臂旋转（用于有输入打断时保持旋转）
+				ExitStartRotationState.ArmRotation = ExitStartState.ArmRotation;
+				ExitStartRotationState.PivotRotation = ExitStartState.PivotRotation;
+				bHasExitStartRotationState = true;
+			}
+			
+			// 混出时，Weight 从 1.0 降到 0.0
+			// FMath::Lerp(CurrentState, TargetState, Weight) 的含义：
+			//   Weight = 1.0 时，结果是 TargetState
+			//   Weight = 0.0 时，结果是 CurrentState
+			// 混出时我们希望：
+			//   Weight = 1.0 时，使用"应用配置后的状态"（ExitStartState）
+			//   Weight = 0.0 时，使用"基础状态"（CachedInitialState）
+			// 所以：CurrentViewState = CachedInitialState，TargetState = ExitStartState
+			CurrentViewState = bHasCachedInitialState ? CachedInitialState : BaseState; // 基础状态（混出终点）
+			TargetState = ExitStartState; // 应用配置后的状态（混出起点）
+			
+			// 冻结旋转参数，让玩家输入控制旋转
+			bFreezeRotations = true;
+		}
+		else
+		{
+			// 2.1 无输入打断：根据 CameraAdjust 的结束方式处理不同逻辑
+			// 在混出的第一帧，保存当前状态作为混出起点（已经包含 AdjustConfig 效果）
+			if (!bHasExitStartState)
+			{
+				// 优先使用上一帧的输出状态（已经包含 AdjustConfig 效果）
+				if (bHasLastOutputState)
+				{
+					ExitStartState = LastOutputState;
+				}
+				else
+				{
+					// 从当前视图反推（当前视图已经包含 AdjustConfig 效果）
+					ExitStartState = BaseState;
+				}
+				bHasExitStartState = true;
+			}
+			
+			// 立即结束：直接设置到基础状态
+			if (EndBehavior == ENamiCameraEndBehavior::ForceEnd)
+			{
+				// 直接使用基础状态，不进行混合
+				CurrentViewState = bHasCachedInitialState ? CachedInitialState : BaseState;
+				TargetState = CurrentViewState; // 目标等于当前，不混合
+			}
+			else
+			{
+				// 正常混出：从"应用配置后的状态"混出到"基础状态"
+				// 混出时，Weight 从 1.0 降到 0.0
+				// FMath::Lerp(CurrentState, TargetState, Weight) 的含义：
+				//   Weight = 1.0 时，结果是 TargetState
+				//   Weight = 0.0 时，结果是 CurrentState
+				// 混出时我们希望：
+				//   Weight = 1.0 时，使用"应用配置后的状态"（ExitStartState）
+				//   Weight = 0.0 时，使用"基础状态"（CachedInitialState）
+				// 所以：CurrentViewState = CachedInitialState，TargetState = ExitStartState
+				CurrentViewState = bHasCachedInitialState ? CachedInitialState : BaseState; // 基础状态（混出终点）
+				TargetState = ExitStartState; // 应用配置后的状态（混出起点）
+			}
+			
+			// 无输入打断时，不冻结旋转，正常混合
+			bFreezeRotations = false;
+		}
+	}
+	else
+	{
+		// 混入：起点=基础视图，终点=基础视图+配置
+		CurrentViewState = BaseState;
+		TargetState = BaseState;
+		ApplyAdjustConfigToState(TargetState, 1.0f);
+		bFreezeRotations = false;
 	}
 	
-	return false;
+	// 3. 重置标志（如果不在混出状态）
+	if (!IsExiting())
+	{
+		// 不在混出状态，重置标志（但保留 CachedInitialState，因为可能还在混入）
+		bHasExitStartRotationState = false;
+		bHasExitStartCameraRotation = false;
+		bHasExitStartState = false;
+		bInputEnabledOnInterrupt = false;
+	}
+	
+	// 4. 在 State 层面混合参数（保证焦点不变）
+	BlendParametersInState(CurrentViewState, TargetState, Weight, bFreezeRotations);
+	
+	// 4.1 如果有输入打断，确保旋转参数使用进入混出状态时的旋转（不被 CameraAdjust 覆盖）
+	if (bInterruptBlendOut && bHasExitStartRotationState)
+	{
+		// 保持进入混出状态时的相机臂旋转，让玩家输入控制旋转
+		CurrentViewState.ArmRotation = ExitStartRotationState.ArmRotation;
+		CurrentViewState.PivotRotation = ExitStartRotationState.PivotRotation;
+	}
+	
+	if (bIsFirstFrameOfExit)
+	{
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("[CameraAdjust] ========== 打断瞬间 - 混合后的 CurrentViewState =========="));
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  Weight: %.3f, bFreezeRotations: %d"), Weight, bFreezeRotations);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  PivotLocation: (%.2f, %.2f, %.2f)"), 
+			CurrentViewState.PivotLocation.X, CurrentViewState.PivotLocation.Y, CurrentViewState.PivotLocation.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmLength: %.2f"), CurrentViewState.ArmLength);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmRotation: (%.2f, %.2f, %.2f)"), 
+			CurrentViewState.ArmRotation.Pitch, CurrentViewState.ArmRotation.Yaw, CurrentViewState.ArmRotation.Roll);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmOffset: (%.2f, %.2f, %.2f)"), 
+			CurrentViewState.ArmOffset.X, CurrentViewState.ArmOffset.Y, CurrentViewState.ArmOffset.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  PivotRotation: (%.2f, %.2f, %.2f)"), 
+			CurrentViewState.PivotRotation.Pitch, CurrentViewState.PivotRotation.Yaw, CurrentViewState.PivotRotation.Roll);
+	}
+	
+	// 5. 保存混出开始时的相机旋转（如果正在混出且修改了相机旋转且配置允许）
+	bool bShouldPreserveCameraRotation = false;
+	// TODO: 重写 bAllowPlayerInput==false 时的逻辑，移除 bInterruptBlendOut 相关判断
+	if (IsExiting() && AdjustConfig.bPreserveCameraRotationOnExit && 
+		(AdjustConfig.CameraRotation.bEnabled || AdjustConfig.CameraRotationOffset.bEnabled))
+	{
+		// 如果是混出的第一帧，保存当前的相机旋转
+		if (!bHasExitStartCameraRotation)
+		{
+			ExitStartCameraRotation = InOutView.CameraRotation;
+			bHasExitStartCameraRotation = true;
+		}
+		bShouldPreserveCameraRotation = true;
+	}
+	
+	
+	// 7. 重新计算输出（基于混合后的参数）
+	CurrentViewState.ComputeOutput();
+	
+	if (bIsFirstFrameOfExit)
+	{
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("[CameraAdjust] ========== 打断瞬间 - ComputeOutput 后的 CurrentViewState =========="));
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraLocation: (%.2f, %.2f, %.2f)"), 
+			CurrentViewState.CameraLocation.X, CurrentViewState.CameraLocation.Y, CurrentViewState.CameraLocation.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraRotation: (%.2f, %.2f, %.2f)"), 
+			CurrentViewState.CameraRotation.Pitch, CurrentViewState.CameraRotation.Yaw, CurrentViewState.CameraRotation.Roll);
+	}
+	
+	// 8. 直接应用结果（不调用 Blend，保证焦点不变）
+	FVector CameraLocationBefore = InOutView.CameraLocation;
+	ComputeViewFromState(CurrentViewState, InOutView);
+	
+	// 记录本帧输出，供下一帧（或打断瞬间）作为混出起点
+	LastOutputState = CurrentViewState;
+	bHasLastOutputState = true;
+
+	// 混出结束或立即结束，对齐 ControlRotation，避免移除后跳变
+	const bool bBlendOutFinished = bIsExitingNow && Weight <= KINDA_SMALL_NUMBER;
+	if (bBlendOutFinished)
+	{
+		InOutView.ControlRotation = InOutView.CameraRotation;
+	}
+	else if (bIsExitingNow && EndBehavior == ENamiCameraEndBehavior::ForceEnd)
+	{
+		// 立即结束：在退出路径上也对齐一次，确保无突变
+		InOutView.ControlRotation = InOutView.CameraRotation;
+	}
+
+	if (bIsFirstFrameOfExit)
+	{
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("[CameraAdjust] ========== 打断瞬间 - 最终输出的 View =========="));
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraLocation Before: (%.2f, %.2f, %.2f)"), 
+			CameraLocationBefore.X, CameraLocationBefore.Y, CameraLocationBefore.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraLocation After: (%.2f, %.2f, %.2f)"), 
+			InOutView.CameraLocation.X, InOutView.CameraLocation.Y, InOutView.CameraLocation.Z);
+		FVector LocationDelta = InOutView.CameraLocation - CameraLocationBefore;
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraLocation Delta: (%.2f, %.2f, %.2f), Size: %.2f"), 
+			LocationDelta.X, LocationDelta.Y, LocationDelta.Z, LocationDelta.Size());
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  PivotLocation: (%.2f, %.2f, %.2f)"), 
+			InOutView.PivotLocation.X, InOutView.PivotLocation.Y, InOutView.PivotLocation.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraRotation: (%.2f, %.2f, %.2f)"), 
+			InOutView.CameraRotation.Pitch, InOutView.CameraRotation.Yaw, InOutView.CameraRotation.Roll);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("=========================================="));
+	}
+	
+	// 9. 混出时保持相机旋转的当前状态，不混合回默认值
+	if (bShouldPreserveCameraRotation && bHasExitStartCameraRotation)
+	{
+		// 保持混出开始时的相机旋转，不应用State计算出的旋转
+		InOutView.CameraRotation = ExitStartCameraRotation;
+	}
+	// TODO: 重写 bAllowPlayerInput==false 时的逻辑，移除相关代码
+	
+	// 更新上一帧的 PivotRotation（在应用配置之后，使用最终计算出的值）
+	LastPivotRotation = CurrentViewState.PivotRotation;
+	bHasLastPivotRotation = true;
 }
 
-FNamiCameraState UNamiCameraAdjustFeature::BuildInitialStateFromView(const FNamiCameraView& View) const
+
+FNamiCameraState UNamiCameraAdjustFeature::BuildInitialStateFromView(const FNamiCameraView& View)
 {
 	FNamiCameraState State;
 
@@ -163,12 +370,54 @@ FNamiCameraState UNamiCameraAdjustFeature::BuildInitialStateFromView(const FNami
 	if (Distance > KINDA_SMALL_NUMBER)
 	{
 		FVector Direction = CameraToPivot.GetSafeNormal();
-		State.PivotRotation = Direction.Rotation();
+		FRotator NewPivotRotation = Direction.Rotation();
+		FRotator NormalizedNewPivotRotation = FNamiCameraMath::NormalizeRotatorTo360(NewPivotRotation);
+		
+		// 如果有上一帧的 PivotRotation，使用 FindDeltaAngle360 确保最短路径，避免跳变
+		// 如果没有上一帧数据（首次构建），直接使用计算出的值
+		if (bHasLastPivotRotation)
+		{
+			FRotator NormalizedLast = FNamiCameraMath::NormalizeRotatorTo360(LastPivotRotation);
+			float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Pitch, NormalizedNewPivotRotation.Pitch);
+			float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Yaw, NormalizedNewPivotRotation.Yaw);
+			float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Roll, NormalizedNewPivotRotation.Roll);
+			
+			// 优化：直接应用差值，最后归一化一次
+			State.PivotRotation.Pitch = NormalizedLast.Pitch + PitchDelta;
+			State.PivotRotation.Yaw = NormalizedLast.Yaw + YawDelta;
+			State.PivotRotation.Roll = NormalizedLast.Roll + RollDelta;
+			// 确保结果在0-360度范围（只归一化一次）
+			State.PivotRotation = FNamiCameraMath::NormalizeRotatorTo360(State.PivotRotation);
+		}
+		else
+		{
+			State.PivotRotation = NormalizedNewPivotRotation;
+		}
 	}
 	else
 	{
 		// 如果距离太近，使用相机旋转
-		State.PivotRotation = View.CameraRotation;
+		FRotator NormalizedNewPivotRotation = FNamiCameraMath::NormalizeRotatorTo360(View.CameraRotation);
+		
+		// 如果有上一帧的 PivotRotation，使用 FindDeltaAngle360 确保最短路径
+		if (bHasLastPivotRotation)
+		{
+			FRotator NormalizedLast = FNamiCameraMath::NormalizeRotatorTo360(LastPivotRotation);
+			float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Pitch, NormalizedNewPivotRotation.Pitch);
+			float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Yaw, NormalizedNewPivotRotation.Yaw);
+			float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Roll, NormalizedNewPivotRotation.Roll);
+			
+			// 优化：直接应用差值，最后归一化一次
+			State.PivotRotation.Pitch = NormalizedLast.Pitch + PitchDelta;
+			State.PivotRotation.Yaw = NormalizedLast.Yaw + YawDelta;
+			State.PivotRotation.Roll = NormalizedLast.Roll + RollDelta;
+			// 确保结果在0-360度范围（只归一化一次）
+			State.PivotRotation = FNamiCameraMath::NormalizeRotatorTo360(State.PivotRotation);
+		}
+		else
+		{
+			State.PivotRotation = NormalizedNewPivotRotation;
+		}
 	}
 
 	// 4. 吊臂旋转初始化为零（让修改配置直接应用，不进行复杂的反推）
@@ -184,8 +433,303 @@ FNamiCameraState UNamiCameraAdjustFeature::BuildInitialStateFromView(const FNami
 	State.ArmOffset = FVector::ZeroVector;
 	State.CameraLocationOffset = FVector::ZeroVector;
 	State.CameraRotationOffset = FRotator::ZeroRotator;
-	State.ControlRotationOffset = FRotator::ZeroRotator;
+	// ControlRotationOffset 已移除，不再需要
 
+	return State;
+}
+
+FNamiCameraState UNamiCameraAdjustFeature::BuildCurrentStateFromView(const FNamiCameraView& View, float DeltaTime) const
+{
+	FNamiCameraState State;
+	
+	// 1. 直接获取的参数
+	State.PivotLocation = View.PivotLocation;
+	
+	// 在打断的第一帧，从实际相机位置反推 PivotRotation（而不是使用 View.ControlRotation）
+	// 因为打断瞬间 View.ControlRotation 可能已经反映玩家输入，但 View.CameraLocation 仍是打断前状态
+	const bool bIsFirstFrameOfExit = IsExiting() && !bHasExitStartRotationState;
+	const FVector CameraToPivot = View.PivotLocation - View.CameraLocation;
+	const float Distance = CameraToPivot.Size();
+	
+	if (bIsFirstFrameOfExit && Distance > KINDA_SMALL_NUMBER)
+	{
+		// 打断瞬间：从实际相机位置反推 PivotRotation（与 BuildInitialStateFromView 逻辑一致）
+		FVector Direction = CameraToPivot.GetSafeNormal();
+		FRotator NewPivotRotation = Direction.Rotation();
+		FRotator NormalizedNewPivotRotation = FNamiCameraMath::NormalizeRotatorTo360(NewPivotRotation);
+		
+		if (bHasLastPivotRotation)
+		{
+			FRotator NormalizedLast = FNamiCameraMath::NormalizeRotatorTo360(LastPivotRotation);
+			float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Pitch, NormalizedNewPivotRotation.Pitch);
+			float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Yaw, NormalizedNewPivotRotation.Yaw);
+			float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Roll, NormalizedNewPivotRotation.Roll);
+			
+			// 优化：直接应用差值，最后归一化一次
+			State.PivotRotation.Pitch = NormalizedLast.Pitch + PitchDelta;
+			State.PivotRotation.Yaw = NormalizedLast.Yaw + YawDelta;
+			State.PivotRotation.Roll = NormalizedLast.Roll + RollDelta;
+			// 确保结果在0-360度范围（只归一化一次）
+			State.PivotRotation = FNamiCameraMath::NormalizeRotatorTo360(State.PivotRotation);
+		}
+		else
+		{
+			State.PivotRotation = NormalizedNewPivotRotation;
+		}
+		
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  [打断瞬间] 从实际相机位置反推 PivotRotation: (%.2f, %.2f, %.2f)"), 
+			State.PivotRotation.Pitch, State.PivotRotation.Yaw, State.PivotRotation.Roll);
+	}
+	else
+	{
+		// 正常情况：使用 View.ControlRotation 计算 PivotRotation（应用速度限制）
+		// 使用0-360度归一化确保 PivotRotation 不会发生 360 度跳变
+	// 这在混合过程中非常重要，因为 View.ControlRotation 可能发生跳变
+		FRotator NormalizedRawPivotRotation = FNamiCameraMath::NormalizeRotatorTo360(View.ControlRotation);
+	if (bHasLastPivotRotation)
+	{
+			FRotator NormalizedLast = FNamiCameraMath::NormalizeRotatorTo360(LastPivotRotation);
+			float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Pitch, NormalizedRawPivotRotation.Pitch);
+			float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Yaw, NormalizedRawPivotRotation.Yaw);
+			float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedLast.Roll, NormalizedRawPivotRotation.Roll);
+			
+			// 应用角度变化速度限制，防止鼠标快速输入时导致 PivotLocation 跳变
+			if (MaxPivotRotationSpeed > 0.0f && DeltaTime > 0.0f)
+			{
+				float MaxDeltaPerFrame = MaxPivotRotationSpeed * DeltaTime;
+				
+				// 限制每个分量的变化速度
+				PitchDelta = FMath::Clamp(PitchDelta, -MaxDeltaPerFrame, MaxDeltaPerFrame);
+				YawDelta = FMath::Clamp(YawDelta, -MaxDeltaPerFrame, MaxDeltaPerFrame);
+				RollDelta = FMath::Clamp(RollDelta, -MaxDeltaPerFrame, MaxDeltaPerFrame);
+			}
+			
+			// 优化：直接应用差值，最后归一化一次
+			State.PivotRotation.Pitch = NormalizedLast.Pitch + PitchDelta;
+			State.PivotRotation.Yaw = NormalizedLast.Yaw + YawDelta;
+			State.PivotRotation.Roll = NormalizedLast.Roll + RollDelta;
+			// 确保结果在0-360度范围（只归一化一次）
+			State.PivotRotation = FNamiCameraMath::NormalizeRotatorTo360(State.PivotRotation);
+	}
+	else
+	{
+			State.PivotRotation = NormalizedRawPivotRotation;
+		}
+	}
+	
+	State.CameraRotation = View.CameraRotation;
+	State.FieldOfView = View.FOV;
+	
+	// 2. 反推吊臂参数
+	// 注意：如果 bIsFirstFrameOfExit 为 true，CameraToPivot 和 Distance 已在上面计算
+	// 如果为 false，需要重新计算
+	FVector CameraToPivotForArm = bIsFirstFrameOfExit ? CameraToPivot : (View.PivotLocation - View.CameraLocation);
+	float DistanceForArm = bIsFirstFrameOfExit ? Distance : CameraToPivotForArm.Size();
+	
+	// 在打断的第一帧添加详细日志
+	if (bIsFirstFrameOfExit)
+	{
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("[CameraAdjust] BuildCurrentStateFromView - 反推 ArmLength:"));
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraLocation: (%.2f, %.2f, %.2f)"), 
+			View.CameraLocation.X, View.CameraLocation.Y, View.CameraLocation.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  PivotLocation: (%.2f, %.2f, %.2f)"), 
+			View.PivotLocation.X, View.PivotLocation.Y, View.PivotLocation.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CameraToPivot: (%.2f, %.2f, %.2f), Distance: %.2f"), 
+			CameraToPivotForArm.X, CameraToPivotForArm.Y, CameraToPivotForArm.Z, DistanceForArm);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  View.ControlRotation: (%.2f, %.2f, %.2f)"), 
+			View.ControlRotation.Pitch, View.ControlRotation.Yaw, View.ControlRotation.Roll);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  LastPivotRotation: (%.2f, %.2f, %.2f), bHasLastPivotRotation: %d"), 
+			LastPivotRotation.Pitch, LastPivotRotation.Yaw, LastPivotRotation.Roll, bHasLastPivotRotation);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  KINDA_SMALL_NUMBER: %.6f"), KINDA_SMALL_NUMBER);
+	}
+	
+	if (DistanceForArm > KINDA_SMALL_NUMBER)
+	{
+		// 计算 ArmRotation
+		// 相机到 Pivot 的方向（世界空间）
+		const FVector Direction = CameraToPivotForArm.GetSafeNormal();
+		
+		// 基础方向是 PivotRotation 的 Forward 方向
+		const FQuat BasePivotQuat = State.PivotRotation.Quaternion();
+		
+		// 在 BasePivot 的局部空间中，从 (1,0,0) 到 LocalDirection 的旋转
+		// LocalDirection = BasePivotQuat.Inverse() * Direction
+		const FVector LocalDirection = BasePivotQuat.Inverse().RotateVector(Direction);
+		
+		// 从 (1, 0, 0) 到 LocalDirection 的旋转就是 ArmRotation
+		State.ArmRotation = LocalDirection.Rotation();
+		State.ArmRotation.Normalize();
+		
+		// 3. 反推 ArmLength（考虑偏移的影响）
+		// 先计算基于 ArmRotation 的基础位置
+		const FQuat ArmQuat = State.ArmRotation.Quaternion();
+		const FQuat LocalRotationQuat = BasePivotQuat * ArmQuat * BasePivotQuat.Inverse();
+		const FVector BaseArmDirection = BasePivotQuat.GetForwardVector();
+		const FVector BaseCameraOffset = -BaseArmDirection;
+		
+		// 旋转后的方向
+		const FVector RotatedDirection = LocalRotationQuat.RotateVector(BaseCameraOffset);
+		
+		// 计算实际方向与理论方向的差异
+		const FVector ActualDirection = CameraToPivotForArm.GetSafeNormal();
+		const float DirectionDot = FVector::DotProduct(RotatedDirection, ActualDirection);
+		
+		if (bIsFirstFrameOfExit)
+		{
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  State.PivotRotation: (%.2f, %.2f, %.2f)"), 
+				State.PivotRotation.Pitch, State.PivotRotation.Yaw, State.PivotRotation.Roll);
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  State.ArmRotation: (%.2f, %.2f, %.2f)"), 
+				State.ArmRotation.Pitch, State.ArmRotation.Yaw, State.ArmRotation.Roll);
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ActualDirection (CameraToPivot normalized): (%.6f, %.6f, %.6f)"), 
+				ActualDirection.X, ActualDirection.Y, ActualDirection.Z);
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  RotatedDirection (理论方向): (%.6f, %.6f, %.6f)"), 
+				RotatedDirection.X, RotatedDirection.Y, RotatedDirection.Z);
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  DirectionDot: %.6f"), DirectionDot);
+		}
+		
+		// 如果方向基本一致（差异很小），说明主要是 ArmLength 的影响
+		// 否则可能是 ArmOffset 或 CameraLocationOffset 的影响
+		if (DirectionDot > 0.99f) // 方向基本一致
+		{
+			// 直接使用距离作为 ArmLength
+			State.ArmLength = DistanceForArm;
+			if (bIsFirstFrameOfExit)
+			{
+				NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmLength: 方向一致，使用距离 = %.2f"), State.ArmLength);
+			}
+		}
+		else
+		{
+			// 方向不一致，可能是偏移的影响
+			// 使用投影距离作为 ArmLength 的近似值
+			const float ProjectedDistance = FVector::DotProduct(CameraToPivotForArm, RotatedDirection);
+			
+			// 如果方向完全相反（DirectionDot < 0.0）或投影距离为负，说明反推失败
+			// 在这种情况下，使用实际距离作为回退值，避免 ArmLength 被错误计算为 0.0
+			if (DirectionDot < 0.0f || ProjectedDistance < 0.0f)
+			{
+				// 反推失败，使用实际距离作为回退值
+				State.ArmLength = DistanceForArm;
+				if (bIsFirstFrameOfExit)
+				{
+					NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmLength: 反推失败（DirectionDot=%.6f，投影距离=%.2f），使用距离作为回退值 = %.2f"), 
+						DirectionDot, ProjectedDistance, State.ArmLength);
+				}
+			}
+			else
+			{
+				// 方向不一致但投影距离为正，使用投影距离
+				State.ArmLength = ProjectedDistance;
+				if (bIsFirstFrameOfExit)
+				{
+					NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmLength: 方向不一致，DirectionDot=%.6f，投影距离=%.2f，最终=%.2f"), 
+						DirectionDot, ProjectedDistance, State.ArmLength);
+				}
+			}
+		}
+	}
+	else
+	{
+		// 距离太近，使用默认值
+		State.ArmLength = 0.0f;
+		State.ArmRotation = FRotator::ZeroRotator;
+		if (bIsFirstFrameOfExit)
+		{
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmLength: 距离太近（%.2f <= %.6f），使用默认值 0.0"), 
+				DistanceForArm, KINDA_SMALL_NUMBER);
+		}
+	}
+	
+	// 4. 反推偏移参数（基于位置差异）
+	// 计算基于当前参数应该得到的相机位置
+	FNamiCameraState TempState = State;
+	TempState.ArmOffset = FVector::ZeroVector;
+	TempState.CameraLocationOffset = FVector::ZeroVector;
+	TempState.CameraRotationOffset = FRotator::ZeroRotator;
+	TempState.ComputeOutput();
+	
+	// 计算实际位置与理论位置的差异
+	const FVector PositionDiff = View.CameraLocation - TempState.CameraLocation;
+	const float PositionDiffSize = PositionDiff.Size();
+	
+	if (PositionDiffSize > KINDA_SMALL_NUMBER)
+	{
+		// 尝试将差异分配到 ArmOffset 和 CameraLocationOffset
+		// 策略：优先分配到 ArmOffset（吊臂本地空间），剩余分配到 CameraLocationOffset（相机本地空间）
+		
+		const FQuat BasePivotQuat = State.PivotRotation.Quaternion();
+		const FQuat ArmQuat = State.ArmRotation.Quaternion();
+		const FQuat FinalArmQuat = BasePivotQuat * ArmQuat;
+		
+		// 将位置差异转换到吊臂本地空间
+		const FVector ArmOffsetWorld = PositionDiff;
+		const FVector ArmOffsetLocal = FinalArmQuat.Inverse().RotateVector(ArmOffsetWorld);
+		
+		// 如果差异主要在吊臂方向上，分配到 ArmOffset
+		// 否则分配到 CameraLocationOffset
+		const FVector ArmForward = FinalArmQuat.GetForwardVector();
+		const float ArmDirectionDot = FMath::Abs(FVector::DotProduct(ArmOffsetWorld.GetSafeNormal(), ArmForward));
+		
+		if (ArmDirectionDot < 0.5f) // 差异主要在吊臂的垂直方向
+		{
+			// 分配到 ArmOffset（吊臂本地空间）
+			State.ArmOffset = ArmOffsetLocal;
+			
+			// 重新计算，看是否还有剩余差异
+			TempState.ArmOffset = State.ArmOffset;
+			TempState.ComputeOutput();
+			const FVector RemainingDiff = View.CameraLocation - TempState.CameraLocation;
+			
+			// 剩余差异分配到 CameraLocationOffset（相机本地空间）
+			if (RemainingDiff.Size() > KINDA_SMALL_NUMBER)
+			{
+				const FQuat CameraQuat = View.CameraRotation.Quaternion();
+				State.CameraLocationOffset = CameraQuat.Inverse().RotateVector(RemainingDiff);
+			}
+			else
+			{
+				State.CameraLocationOffset = FVector::ZeroVector;
+			}
+		}
+		else
+		{
+			// 差异主要在吊臂方向上，分配到 CameraLocationOffset
+			const FQuat CameraQuat = View.CameraRotation.Quaternion();
+			State.CameraLocationOffset = CameraQuat.Inverse().RotateVector(PositionDiff);
+			State.ArmOffset = FVector::ZeroVector;
+		}
+	}
+	else
+	{
+		// 位置差异很小，使用零值
+		State.ArmOffset = FVector::ZeroVector;
+		State.CameraLocationOffset = FVector::ZeroVector;
+	}
+	
+	// 5. 反推 CameraRotationOffset
+	// 计算基于 ArmRotation 应该得到的相机旋转
+	const FQuat BasePivotQuat = State.PivotRotation.Quaternion();
+	const FQuat ArmQuat = State.ArmRotation.Quaternion();
+	const FQuat FinalArmQuat = BasePivotQuat * ArmQuat;
+	const FRotator ExpectedCameraRotation = FinalArmQuat.Rotator();
+	
+	// 计算实际旋转与理论旋转的差异
+	FRotator RotationDiff = View.CameraRotation - ExpectedCameraRotation;
+	RotationDiff.Normalize();
+	
+	// 如果差异很小，使用零值；否则使用差异值
+	if (FMath::Abs(RotationDiff.Pitch) < 1.0f && 
+		FMath::Abs(RotationDiff.Yaw) < 1.0f && 
+		FMath::Abs(RotationDiff.Roll) < 1.0f)
+	{
+		State.CameraRotationOffset = FRotator::ZeroRotator;
+	}
+	else
+	{
+		State.CameraRotationOffset = RotationDiff;
+		State.CameraRotationOffset.Normalize();
+	}
+	
 	return State;
 }
 
@@ -195,14 +739,53 @@ void UNamiCameraAdjustFeature::ApplyAdjustConfigToState(FNamiCameraState& InOutS
 	FNamiCameraStateModify TempAdjustConfig = AdjustConfig;
 	const bool bIsExitingNow = IsExiting();
 
+	// 如果允许玩家输入，禁用旋转参数，只应用位置参数（让玩家输入控制旋转）
+	// 这包括：1. 正常情况下的 bAllowPlayerInput=true
+	//         2. 打断时开启玩家输入后的情况（混出期间和混出完成后）
+	if (TempAdjustConfig.bAllowPlayerInput)
+	{
+		// 禁用旋转参数（由玩家输入控制）
+		TempAdjustConfig.ArmRotation.bEnabled = false;
+		TempAdjustConfig.CameraRotationOffset.bEnabled = false;
+		TempAdjustConfig.PivotRotation.bEnabled = false;
+		
+		NAMI_LOG_INPUT_INTERRUPT(VeryVerbose, TEXT("[CameraAdjust] 允许玩家输入，禁用旋转参数。bAllowPlayerInput=%d, bIsExitingNow=%d, bInputEnabledOnInterrupt=%d"),
+			TempAdjustConfig.bAllowPlayerInput, bIsExitingNow, bInputEnabledOnInterrupt);
+	}
+	// TODO: 重写 bAllowPlayerInput==false 时的混出逻辑
+	// 当前逻辑已移除，需要重新实现：
+	// - 如果没有输入打断，完全由 CameraAdjust 管理，正常的混入混出流程
+	// - 如果触发了输入打断，相机臂旋转完全由玩家控制，CameraAdjust 只处理位置参数（臂长、FOV等）
+
 	// 特殊处理 ArmRotation：需要在角色朝向空间中计算，然后转换到 PivotSpace
 	if (TempAdjustConfig.ArmRotation.bEnabled)
 	{
 		// 获取角色朝向
-		FRotator CharacterRotation = GetCharacterRotation(InOutState);
+		FRotator RawCharacterRotation = GetCharacterRotation(InOutState);
 		
-		// 获取初始 ArmRotation（相对于初始角色朝向的偏移）
-		const FRotator InitialArmRotation = CachedInitialState.ArmRotation;
+		// 使用最短路径确保 CharacterRotation 不会发生 360 度跳变
+		// 这在混合过程中玩家输入改变角色朝向时非常重要
+		FRotator CharacterRotation;
+		if (bHasLastCharacterRotation)
+		{
+			CharacterRotation.Pitch = LastCharacterRotation.Pitch + FMath::FindDeltaAngleDegrees(LastCharacterRotation.Pitch, RawCharacterRotation.Pitch);
+			CharacterRotation.Yaw = LastCharacterRotation.Yaw + FMath::FindDeltaAngleDegrees(LastCharacterRotation.Yaw, RawCharacterRotation.Yaw);
+			CharacterRotation.Roll = LastCharacterRotation.Roll + FMath::FindDeltaAngleDegrees(LastCharacterRotation.Roll, RawCharacterRotation.Roll);
+			CharacterRotation.Normalize();
+		}
+		else
+		{
+			CharacterRotation = RawCharacterRotation;
+		}
+		
+		// 更新缓存的 CharacterRotation
+		LastCharacterRotation = CharacterRotation;
+		bHasLastCharacterRotation = true;
+		
+		// 获取当前 ArmRotation（View转State方案：使用当前 State 的值作为"初始值"）
+		// 对于 Override 模式，从当前值过渡到目标值
+		// 对于 Additive 模式，在当前值基础上叠加
+		const FRotator CurrentArmRotation = InOutState.ArmRotation;
 		
 		// 根据混合模式和退出状态计算目标值（在角色朝向的局部空间中）
 		FRotator TargetArmRotation;
@@ -216,7 +799,7 @@ void UNamiCameraAdjustFeature::ApplyAdjustConfigToState(FNamiCameraState& InOutS
 			// 1. 将当前 ArmRotation 从 PivotSpace 转换到 CharacterSpace
 			// 转换原理：BasePivotQuat * PivotSpaceArmQuat = CharacterQuat * CharacterSpaceArmQuat
 			// 因此：CharacterSpaceArmQuat = CharacterQuat.Inverse() * BasePivotQuat * PivotSpaceArmQuat
-			const FRotator BasePivotRotation = InOutState.PivotRotation + InOutState.ControlRotationOffset;
+			const FRotator BasePivotRotation = InOutState.PivotRotation;
 			const FQuat BasePivotQuat = BasePivotRotation.Quaternion();
 			const FQuat CurrentPivotSpaceArmQuat = InOutState.ArmRotation.Quaternion();
 			const FQuat CharacterQuat = CharacterRotation.Quaternion();
@@ -225,8 +808,6 @@ void UNamiCameraAdjustFeature::ApplyAdjustConfigToState(FNamiCameraState& InOutS
 			CurrentCharacterSpaceArmRotation.Normalize();
 			
 			// 2. 在 CharacterSpace 中叠加偏移
-			// 直接相加，不做 Slerp，确保是真正的增量叠加
-			// 但需要处理角度叠加，避免跨越 360 度边界导致跳变
 			FRotator AdditiveValue = TempAdjustConfig.ArmRotation.Value * Weight;
 			
 			// 计算叠加后的目标值（直接相加）
@@ -238,22 +819,26 @@ void UNamiCameraAdjustFeature::ApplyAdjustConfigToState(FNamiCameraState& InOutS
 			// 对 RawTarget 进行归一化，确保值在 -180 到 180 范围内
 			RawTarget.Normalize();
 			
-			// 对每个分量使用 FindDeltaAngleDegrees 确保选择最短路径，避免跳变
-			// 例如：如果 Current 是 178 度，加上 45 度后 RawTarget 是 223 度（归一化后变成 -137 度）
-			// FindDeltaAngleDegrees(178, -137) 会返回 45 度的差值（最短路径）
-			// 这样 Result = 178 + 45 = 223 度（归一化后是 -137 度），但计算过程是连续的，不会跳变
+			// 使用 FindDeltaAngleDegrees 确保选择最短路径，避免跳变
 			TargetArmRotation.Pitch = CurrentCharacterSpaceArmRotation.Pitch + FMath::FindDeltaAngleDegrees(CurrentCharacterSpaceArmRotation.Pitch, RawTarget.Pitch);
 			TargetArmRotation.Yaw = CurrentCharacterSpaceArmRotation.Yaw + FMath::FindDeltaAngleDegrees(CurrentCharacterSpaceArmRotation.Yaw, RawTarget.Yaw);
 			TargetArmRotation.Roll = CurrentCharacterSpaceArmRotation.Roll + FMath::FindDeltaAngleDegrees(CurrentCharacterSpaceArmRotation.Roll, RawTarget.Roll);
-			
-			TargetArmRotation.Normalize(); // 归一化，确保值在有效范围内
-			// 注意：TargetArmRotation 此时在 CharacterSpace 中，后续统一转换代码会转换到 PivotSpace
+			TargetArmRotation.Normalize();
 		}
-		else // Override（正常情况和退出情况）
+		else // Override
 		{
-			// Override：在相对角度空间中，从初始相对偏移过渡到目标相对偏移
-			// 使用 FindDeltaAngleDegrees 确保选择最短路径，避免 270度到-90度 的跳变
-			FRotator NormalizedInitial = InitialArmRotation;
+			// Override：从当前值过渡到目标值，使用 FindDeltaAngleDegrees 确保最短路径
+			
+			// 将当前 ArmRotation 从 PivotSpace 转换到 CharacterSpace
+			const FRotator BasePivotRotation = InOutState.PivotRotation;
+			const FQuat BasePivotQuat = BasePivotRotation.Quaternion();
+			const FQuat CurrentPivotSpaceArmQuat = CurrentArmRotation.Quaternion();
+			const FQuat CharacterQuat = CharacterRotation.Quaternion();
+			const FQuat CurrentCharacterSpaceArmQuat = CharacterQuat.Inverse() * BasePivotQuat * CurrentPivotSpaceArmQuat;
+			FRotator CurrentCharacterSpaceArmRotation = CurrentCharacterSpaceArmQuat.Rotator();
+			CurrentCharacterSpaceArmRotation.Normalize();
+			
+			FRotator NormalizedInitial = CurrentCharacterSpaceArmRotation;
 			NormalizedInitial.Normalize();
 			
 			FRotator NormalizedTargetValue = TempAdjustConfig.ArmRotation.Value;
@@ -269,8 +854,7 @@ void UNamiCameraAdjustFeature::ApplyAdjustConfigToState(FNamiCameraState& InOutS
 			FRotator LerpedTarget = NormalizedInitial + DeltaRotation * Weight;
 			LerpedTarget.Normalize();
 			
-			// 使用球面插值（Slerp）确保在球面上平滑过渡，实现"绕圈混合"效果
-			// 注意：由于我们已经使用了 FindDeltaAngleDegrees 确保最短路径，转换为 Quaternion 时不会跳变
+			// 使用球面插值（Slerp）确保在球面上平滑过渡
 			const FQuat InitialQuat = NormalizedInitial.Quaternion();
 			const FQuat TargetQuat = LerpedTarget.Quaternion();
 			
@@ -285,13 +869,27 @@ void UNamiCameraAdjustFeature::ApplyAdjustConfigToState(FNamiCameraState& InOutS
 				
 				const float BlendAlpha = 1.0f - Weight; // Weight 从 1.0 降到 0.0，BlendAlpha 从 0.0 升到 1.0
 				const FQuat ResultQuat = FQuat::Slerp(ExitTargetQuat, InitialQuat, BlendAlpha);
-				TargetArmRotation = ResultQuat.Rotator();
+				FRotator SlerpedRotation = ResultQuat.Rotator();
+				SlerpedRotation.Normalize();
+				
+				// 使用 FindDeltaAngleDegrees 确保最短路径，避免跳变
+				TargetArmRotation.Pitch = NormalizedTargetValue.Pitch + FMath::FindDeltaAngleDegrees(NormalizedTargetValue.Pitch, SlerpedRotation.Pitch);
+				TargetArmRotation.Yaw = NormalizedTargetValue.Yaw + FMath::FindDeltaAngleDegrees(NormalizedTargetValue.Yaw, SlerpedRotation.Yaw);
+				TargetArmRotation.Roll = NormalizedTargetValue.Roll + FMath::FindDeltaAngleDegrees(NormalizedTargetValue.Roll, SlerpedRotation.Roll);
+				TargetArmRotation.Normalize();
 			}
 			else
 			{
 				// 正常情况：从初始值过渡到目标值
 				const FQuat ResultQuat = FQuat::Slerp(InitialQuat, TargetQuat, Weight);
-				TargetArmRotation = ResultQuat.Rotator();
+				FRotator SlerpedRotation = ResultQuat.Rotator();
+				SlerpedRotation.Normalize();
+				
+				// 使用 FindDeltaAngleDegrees 确保最短路径，避免跳变
+				TargetArmRotation.Pitch = NormalizedInitial.Pitch + FMath::FindDeltaAngleDegrees(NormalizedInitial.Pitch, SlerpedRotation.Pitch);
+				TargetArmRotation.Yaw = NormalizedInitial.Yaw + FMath::FindDeltaAngleDegrees(NormalizedInitial.Yaw, SlerpedRotation.Yaw);
+				TargetArmRotation.Roll = NormalizedInitial.Roll + FMath::FindDeltaAngleDegrees(NormalizedInitial.Roll, SlerpedRotation.Roll);
+				TargetArmRotation.Normalize();
 			}
 		}
 		
@@ -302,97 +900,287 @@ void UNamiCameraAdjustFeature::ApplyAdjustConfigToState(FNamiCameraState& InOutS
 		// - 要让两者相等：BasePivotQuat * PivotSpaceArmQuat = CharacterQuat * TargetArmQuat
 		// - 因此：PivotSpaceArmQuat = BasePivotQuat.Inverse() * CharacterQuat * TargetArmQuat
 		const FQuat CharacterQuat = CharacterRotation.Quaternion();
-		const FRotator BasePivotRotation = InOutState.PivotRotation + InOutState.ControlRotationOffset;
+		const FRotator BasePivotRotation = InOutState.PivotRotation;
 		const FQuat BasePivotQuat = BasePivotRotation.Quaternion();
 		const FQuat TargetArmQuat = TargetArmRotation.Quaternion();
 		const FQuat PivotSpaceArmQuat = BasePivotQuat.Inverse() * CharacterQuat * TargetArmQuat;
 		
 		// 应用到 State
-		InOutState.ArmRotation = PivotSpaceArmQuat.Rotator();
+		FRotator NewArmRotation = PivotSpaceArmQuat.Rotator();
+		NewArmRotation.Normalize();
+		
+		// 使用 FindDeltaAngleDegrees 确保从当前值到新值的最短路径，避免跳变
+		FRotator CurrentArmRotationForBlend = InOutState.ArmRotation;
+		CurrentArmRotationForBlend.Normalize();
+		
+		const float CurrentPitch = CurrentArmRotationForBlend.Pitch;
+		const float CurrentYaw = CurrentArmRotationForBlend.Yaw;
+		const float CurrentRoll = CurrentArmRotationForBlend.Roll;
+		const float NewPitch = NewArmRotation.Pitch;
+		const float NewYaw = NewArmRotation.Yaw;
+		const float NewRoll = NewArmRotation.Roll;
+		
+		InOutState.ArmRotation.Pitch = CurrentPitch + FMath::FindDeltaAngleDegrees(CurrentPitch, NewPitch);
+		InOutState.ArmRotation.Yaw = CurrentYaw + FMath::FindDeltaAngleDegrees(CurrentYaw, NewYaw);
+		InOutState.ArmRotation.Roll = CurrentRoll + FMath::FindDeltaAngleDegrees(CurrentRoll, NewRoll);
+		InOutState.ArmRotation.Normalize();
+		
 		InOutState.ChangedFlags.bArmRotation = true;
 		
 		// 禁用配置中的 ArmRotation，避免在 ApplyToState 中重复应用
 		TempAdjustConfig.ArmRotation.bEnabled = false;
 	}
 
-	// 退出时的处理：对于其他 Override 模式的修改项，将 Value 设置为初始值
+	// 退出时的处理：对于 Override 模式的修改项，将 Value 设置为当前 State 的值
+	// View转State方案：退出时从目标值混合回当前值（即首次激活时的值）
+	// 注意：这里使用 InOutState 的当前值，而不是缓存的初始值
+	// 特殊处理：相机旋转在混出时保持当前状态，不混合回默认值
 	if (bIsExitingNow)
 	{
-		// 对于所有 Override 模式的修改项，将 Value 设置为初始值
+		// 对于所有 Override 模式的修改项，将 Value 设置为当前 State 的值
+		// 这样退出时会从目标值混合回当前值
 		if (TempAdjustConfig.PivotLocation.bEnabled && TempAdjustConfig.PivotLocation.BlendMode == ENamiCameraBlendMode::Override)
 		{
-			TempAdjustConfig.PivotLocation.Value = CachedInitialState.PivotLocation;
+			TempAdjustConfig.PivotLocation.Value = InOutState.PivotLocation;
 		}
 		if (TempAdjustConfig.PivotRotation.bEnabled && TempAdjustConfig.PivotRotation.BlendMode == ENamiCameraBlendMode::Override)
 		{
-			TempAdjustConfig.PivotRotation.Value = CachedInitialState.PivotRotation;
+			TempAdjustConfig.PivotRotation.Value = InOutState.PivotRotation;
 		}
 		if (TempAdjustConfig.ArmLength.bEnabled && TempAdjustConfig.ArmLength.BlendMode == ENamiCameraBlendMode::Override)
 		{
-			TempAdjustConfig.ArmLength.Value = CachedInitialState.ArmLength;
+			const float ArmLengthBefore = TempAdjustConfig.ArmLength.Value;
+			TempAdjustConfig.ArmLength.Value = InOutState.ArmLength;
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("[CameraAdjust] ApplyAdjustConfigToState - 退出时设置 ArmLength.Value: %.2f -> %.2f (InOutState.ArmLength)"), 
+				ArmLengthBefore, TempAdjustConfig.ArmLength.Value);
 		}
-		// ArmRotation 已经在上面特殊处理了，退出时 Weight 会从 1.0 降到 0.0，自动混合回初始值
+		// ArmRotation 已经在上面特殊处理了，退出时 Weight 会从 1.0 降到 0.0，自动混合回当前值
 		if (TempAdjustConfig.ArmOffset.bEnabled && TempAdjustConfig.ArmOffset.BlendMode == ENamiCameraBlendMode::Override)
 		{
-			TempAdjustConfig.ArmOffset.Value = CachedInitialState.ArmOffset;
+			TempAdjustConfig.ArmOffset.Value = InOutState.ArmOffset;
 		}
-		if (TempAdjustConfig.ControlRotationOffset.bEnabled && TempAdjustConfig.ControlRotationOffset.BlendMode == ENamiCameraBlendMode::Override)
-		{
-			TempAdjustConfig.ControlRotationOffset.Value = CachedInitialState.ControlRotationOffset;
-		}
+		// ControlRotationOffset 已移除，不再需要处理
 		if (TempAdjustConfig.CameraLocationOffset.bEnabled && TempAdjustConfig.CameraLocationOffset.BlendMode == ENamiCameraBlendMode::Override)
 		{
-			TempAdjustConfig.CameraLocationOffset.Value = CachedInitialState.CameraLocationOffset;
+			TempAdjustConfig.CameraLocationOffset.Value = InOutState.CameraLocationOffset;
 		}
-		if (TempAdjustConfig.CameraRotationOffset.bEnabled && TempAdjustConfig.CameraRotationOffset.BlendMode == ENamiCameraBlendMode::Override)
+		// 混出时保持相机旋转不变（如果配置允许）
+		if (TempAdjustConfig.bPreserveCameraRotationOnExit)
 		{
-			TempAdjustConfig.CameraRotationOffset.Value = CachedInitialState.CameraRotationOffset;
+			if (TempAdjustConfig.CameraRotationOffset.bEnabled && TempAdjustConfig.CameraRotationOffset.BlendMode == ENamiCameraBlendMode::Override)
+			{
+				TempAdjustConfig.CameraRotationOffset.bEnabled = false; // 禁用，保持当前状态
+			}
 		}
 		if (TempAdjustConfig.FieldOfView.bEnabled && TempAdjustConfig.FieldOfView.BlendMode == ENamiCameraBlendMode::Override)
 		{
-			TempAdjustConfig.FieldOfView.Value = CachedInitialState.FieldOfView;
+			TempAdjustConfig.FieldOfView.Value = InOutState.FieldOfView;
 		}
 		if (TempAdjustConfig.CameraLocation.bEnabled && TempAdjustConfig.CameraLocation.BlendMode == ENamiCameraBlendMode::Override)
 		{
-			TempAdjustConfig.CameraLocation.Value = CachedInitialState.CameraLocation;
+			TempAdjustConfig.CameraLocation.Value = InOutState.CameraLocation;
 		}
-		if (TempAdjustConfig.CameraRotation.bEnabled && TempAdjustConfig.CameraRotation.BlendMode == ENamiCameraBlendMode::Override)
+		if (TempAdjustConfig.bPreserveCameraRotationOnExit)
 		{
-			TempAdjustConfig.CameraRotation.Value = CachedInitialState.CameraRotation;
+			if (TempAdjustConfig.CameraRotation.bEnabled && TempAdjustConfig.CameraRotation.BlendMode == ENamiCameraBlendMode::Override)
+			{
+				TempAdjustConfig.CameraRotation.bEnabled = false; // 禁用，保持当前状态
+			}
 		}
 	}
 
-	// 检查视角控制是否应该被打断
-	if (TempAdjustConfig.ControlRotationOffset.bEnabled)
+	// 应用 ArmRotation（如果启用）
+	if (TempAdjustConfig.ArmRotation.bEnabled)
 	{
-		// 如果被打断，不应用 ControlRotationOffset
-		if (bViewControlInterrupted)
+		// 计算有效权重（混合模式下根据玩家输入衰减）
+		float EffectiveWeight = Weight;
+		if (TempAdjustConfig.ControlMode == ENamiCameraControlMode::Blended)
 		{
-			// 临时禁用 ControlRotationOffset
-			const bool bWasEnabled = TempAdjustConfig.ControlRotationOffset.bEnabled;
-			TempAdjustConfig.ControlRotationOffset.bEnabled = false;
-			TempAdjustConfig.ApplyToState(InOutState, Weight);
-			TempAdjustConfig.ControlRotationOffset.bEnabled = bWasEnabled; // 恢复原值
+			// 获取输入大小（使用缓存的输入）
+			float InputMagnitude = GetPlayerCameraInputMagnitude();
+			
+			// 输入衰减公式：输入越大，权重越低
+			// 输入 0.0 时权重 = Weight，输入 1.0 时权重 = Weight * 0.3
+			// 可以根据手感调整衰减曲线
+			float InputAttenuation = FMath::Lerp(1.0f, 0.3f, InputMagnitude);
+			EffectiveWeight = Weight * InputAttenuation;
+			
+			NAMI_LOG_INPUT_INTERRUPT(VeryVerbose, TEXT("[CameraAdjust] Blended模式：输入=%.3f，衰减=%.3f，有效权重=%.3f"),
+				InputMagnitude, InputAttenuation, EffectiveWeight);
 		}
-		else
-		{
-			// 计算有效权重（混合模式下根据玩家输入衰减）
-			float EffectiveWeight = Weight;
-			if (TempAdjustConfig.ControlMode == ENamiCameraControlMode::Blended)
-			{
-				float InputMagnitude = GetPlayerCameraInputMagnitude();
-				// 玩家输入越大，效果权重越低
-				EffectiveWeight = Weight * (1.0f - FMath::Clamp(InputMagnitude, 0.0f, 1.0f));
-			}
 
-			// 应用所有修改（包括 ControlRotationOffset）
-			TempAdjustConfig.ApplyToState(InOutState, EffectiveWeight);
-		}
+		// 应用所有修改（包括 ArmRotation）
+		TempAdjustConfig.ApplyToState(InOutState, EffectiveWeight);
 	}
 	else
 	{
 		// 没有视角控制，直接应用所有修改
 		TempAdjustConfig.ApplyToState(InOutState, Weight);
+	}
+}
+
+void UNamiCameraAdjustFeature::BlendParametersInState(FNamiCameraState& CurrentState, const FNamiCameraState& TargetState, float Weight, bool bFreezeRotations) const
+{
+	// 检查是否是打断的第一帧（通过检查 IsExiting() 和 Weight 来判断）
+	const bool bIsFirstFrameOfExit = IsExiting() && Weight < 1.0f && Weight > 0.99f;  // Weight 接近 1.0 但小于 1.0 表示刚开始混出
+	
+	if (bIsFirstFrameOfExit)
+	{
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("[CameraAdjust] ========== BlendParametersInState - 打断瞬间 =========="));
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  Weight: %.6f, bFreezeRotations: %d"), Weight, bFreezeRotations);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CurrentState.ArmLength: %.2f -> TargetState.ArmLength: %.2f"), 
+			CurrentState.ArmLength, TargetState.ArmLength);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CurrentState.ArmRotation: (%.2f, %.2f, %.2f)"), 
+			CurrentState.ArmRotation.Pitch, CurrentState.ArmRotation.Yaw, CurrentState.ArmRotation.Roll);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  TargetState.ArmRotation: (%.2f, %.2f, %.2f)"), 
+			TargetState.ArmRotation.Pitch, TargetState.ArmRotation.Yaw, TargetState.ArmRotation.Roll);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  CurrentState.ArmOffset: (%.2f, %.2f, %.2f)"), 
+			CurrentState.ArmOffset.X, CurrentState.ArmOffset.Y, CurrentState.ArmOffset.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  TargetState.ArmOffset: (%.2f, %.2f, %.2f)"), 
+			TargetState.ArmOffset.X, TargetState.ArmOffset.Y, TargetState.ArmOffset.Z);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  AdjustConfig.ArmLength.bEnabled: %d"), AdjustConfig.ArmLength.bEnabled);
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  AdjustConfig.ArmRotation.bEnabled: %d"), AdjustConfig.ArmRotation.bEnabled);
+	}
+	
+	// 1. 混合位置相关参数（保证焦点不变）
+	if (AdjustConfig.ArmLength.bEnabled)
+	{
+		const float ArmLengthBefore = CurrentState.ArmLength;
+		CurrentState.ArmLength = FMath::Lerp(
+			CurrentState.ArmLength,
+			TargetState.ArmLength,
+			Weight
+		);
+		
+		if (bIsFirstFrameOfExit)
+		{
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmLength: %.2f -> %.2f (Delta: %.2f)"), 
+				ArmLengthBefore, CurrentState.ArmLength, CurrentState.ArmLength - ArmLengthBefore);
+		}
+	}
+	
+	if (AdjustConfig.ArmRotation.bEnabled && !bFreezeRotations)
+	{
+		const FRotator ArmRotationBefore = CurrentState.ArmRotation;
+		
+		// 使用球面插值（Slerp）确保在球面上平滑过渡
+		const FQuat CurrentQuat = CurrentState.ArmRotation.Quaternion();
+		const FQuat TargetQuat = TargetState.ArmRotation.Quaternion();
+		const FQuat BlendedQuat = FQuat::Slerp(CurrentQuat, TargetQuat, Weight);
+		FRotator BlendedRotation = BlendedQuat.Rotator();
+		BlendedRotation.Normalize();
+		
+		// 使用 FindDeltaAngleDegrees 确保最短路径，避免跳变
+		CurrentState.ArmRotation.Pitch = CurrentState.ArmRotation.Pitch + 
+			FMath::FindDeltaAngleDegrees(CurrentState.ArmRotation.Pitch, BlendedRotation.Pitch);
+		CurrentState.ArmRotation.Yaw = CurrentState.ArmRotation.Yaw + 
+			FMath::FindDeltaAngleDegrees(CurrentState.ArmRotation.Yaw, BlendedRotation.Yaw);
+		CurrentState.ArmRotation.Roll = CurrentState.ArmRotation.Roll + 
+			FMath::FindDeltaAngleDegrees(CurrentState.ArmRotation.Roll, BlendedRotation.Roll);
+		CurrentState.ArmRotation.Normalize();
+		
+		if (bIsFirstFrameOfExit)
+		{
+			FRotator ArmRotationDelta = CurrentState.ArmRotation - ArmRotationBefore;
+			ArmRotationDelta.Normalize();
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmRotation: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f) (Delta: %.2f, %.2f, %.2f)"), 
+				ArmRotationBefore.Pitch, ArmRotationBefore.Yaw, ArmRotationBefore.Roll,
+				CurrentState.ArmRotation.Pitch, CurrentState.ArmRotation.Yaw, CurrentState.ArmRotation.Roll,
+				ArmRotationDelta.Pitch, ArmRotationDelta.Yaw, ArmRotationDelta.Roll);
+		}
+	}
+	else if (bIsFirstFrameOfExit && AdjustConfig.ArmRotation.bEnabled)
+	{
+		NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmRotation: 冻结（bFreezeRotations=true）"));
+	}
+	
+	if (AdjustConfig.ArmOffset.bEnabled)
+	{
+		const FVector ArmOffsetBefore = CurrentState.ArmOffset;
+		CurrentState.ArmOffset = FMath::Lerp(
+			CurrentState.ArmOffset,
+			TargetState.ArmOffset,
+			Weight
+		);
+		
+		if (bIsFirstFrameOfExit)
+		{
+			FVector ArmOffsetDelta = CurrentState.ArmOffset - ArmOffsetBefore;
+			NAMI_LOG_INPUT_INTERRUPT(Warning, TEXT("  ArmOffset: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f) (Delta: %.2f, %.2f, %.2f)"), 
+				ArmOffsetBefore.X, ArmOffsetBefore.Y, ArmOffsetBefore.Z,
+				CurrentState.ArmOffset.X, CurrentState.ArmOffset.Y, CurrentState.ArmOffset.Z,
+				ArmOffsetDelta.X, ArmOffsetDelta.Y, ArmOffsetDelta.Z);
+		}
+	}
+	
+	// 2. 混合枢轴点参数（根据配置决定是否混合）
+	if (AdjustConfig.PivotLocation.bEnabled)
+	{
+		CurrentState.PivotLocation = FMath::Lerp(
+			CurrentState.PivotLocation,
+			TargetState.PivotLocation,
+			Weight
+		);
+	}
+	
+	if (AdjustConfig.PivotRotation.bEnabled && !bFreezeRotations)
+	{
+		// 使用0-360度归一化和最短路径混合
+		// 优化：只在混合前归一化一次，混合后归一化一次
+		FRotator NormalizedCurrent = FNamiCameraMath::NormalizeRotatorTo360(CurrentState.PivotRotation);
+		FRotator NormalizedTarget = FNamiCameraMath::NormalizeRotatorTo360(TargetState.PivotRotation);
+		
+		float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Pitch, NormalizedTarget.Pitch);
+		float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Yaw, NormalizedTarget.Yaw);
+		float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Roll, NormalizedTarget.Roll);
+		
+		// 应用权重插值（结果会在最后归一化）
+		CurrentState.PivotRotation.Pitch = NormalizedCurrent.Pitch + PitchDelta * Weight;
+		CurrentState.PivotRotation.Yaw = NormalizedCurrent.Yaw + YawDelta * Weight;
+		CurrentState.PivotRotation.Roll = NormalizedCurrent.Roll + RollDelta * Weight;
+		// 确保结果在0-360度范围（只归一化一次）
+		CurrentState.PivotRotation = FNamiCameraMath::NormalizeRotatorTo360(CurrentState.PivotRotation);
+	}
+	
+	// 3. 混合其他参数
+	if (AdjustConfig.FieldOfView.bEnabled)
+	{
+		CurrentState.FieldOfView = FMath::Lerp(
+			CurrentState.FieldOfView,
+			TargetState.FieldOfView,
+			Weight
+		);
+	}
+	
+	// 相机旋转在混出时保持当前状态，不混合回默认值（如果配置允许）
+	if (AdjustConfig.CameraRotationOffset.bEnabled && 
+		!bFreezeRotations &&
+		(!IsExiting() || !AdjustConfig.bPreserveCameraRotationOnExit))
+	{
+		// 使用0-360度归一化和最短路径混合
+		// 优化：只在混合前归一化一次，混合后归一化一次
+		FRotator NormalizedCurrent = FNamiCameraMath::NormalizeRotatorTo360(CurrentState.CameraRotationOffset);
+		FRotator NormalizedTarget = FNamiCameraMath::NormalizeRotatorTo360(TargetState.CameraRotationOffset);
+		
+		float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Pitch, NormalizedTarget.Pitch);
+		float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Yaw, NormalizedTarget.Yaw);
+		float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Roll, NormalizedTarget.Roll);
+		
+		// 应用权重插值（结果会在最后归一化）
+		CurrentState.CameraRotationOffset.Pitch = NormalizedCurrent.Pitch + PitchDelta * Weight;
+		CurrentState.CameraRotationOffset.Yaw = NormalizedCurrent.Yaw + YawDelta * Weight;
+		CurrentState.CameraRotationOffset.Roll = NormalizedCurrent.Roll + RollDelta * Weight;
+		// 确保结果在0-360度范围（只归一化一次）
+		CurrentState.CameraRotationOffset = FNamiCameraMath::NormalizeRotatorTo360(CurrentState.CameraRotationOffset);
+	}
+	
+	if (AdjustConfig.CameraLocationOffset.bEnabled)
+	{
+		CurrentState.CameraLocationOffset = FMath::Lerp(
+			CurrentState.CameraLocationOffset,
+			TargetState.CameraLocationOffset,
+			Weight
+		);
 	}
 }
 
@@ -408,8 +1196,8 @@ void UNamiCameraAdjustFeature::ComputeViewFromState(const FNamiCameraState& Stat
 	// ControlLocation 通常是 PivotLocation
 	OutView.ControlLocation = State.PivotLocation;
 	
-	// ControlRotation = PivotRotation + ControlRotationOffset
-	OutView.ControlRotation = State.PivotRotation + State.ControlRotationOffset;
+	// ControlRotation = PivotRotation（合并后，ArmRotation 不再影响 ControlRotation）
+	OutView.ControlRotation = State.PivotRotation;
 }
 
 FVector UNamiCameraAdjustFeature::GetPivotLocation(const FNamiCameraView& View) const
@@ -421,9 +1209,18 @@ FVector UNamiCameraAdjustFeature::GetPivotLocation(const FNamiCameraView& View) 
 	}
 	
 	// 回退：尝试从 Pawn 获取
-	if (CachedPawn.IsValid())
+	UNamiCameraModeBase* Mode = GetCameraMode();
+	if (Mode)
 	{
-		return CachedPawn->GetActorLocation();
+		UNamiCameraComponent* CameraComponent = Mode->GetCameraComponent();
+		if (CameraComponent)
+		{
+			APawn* OwnerPawn = CameraComponent->GetOwnerPawn();
+			if (OwnerPawn)
+			{
+				return OwnerPawn->GetActorLocation();
+			}
+		}
 	}
 	
 	// 最后回退：使用相机位置
@@ -433,113 +1230,67 @@ FVector UNamiCameraAdjustFeature::GetPivotLocation(const FNamiCameraView& View) 
 FRotator UNamiCameraAdjustFeature::GetCharacterRotation(const FNamiCameraState& InState) const
 {
 	// 优先从 Pawn 获取角色朝向（Mesh 朝向）
-	if (CachedPawn.IsValid())
+	UNamiCameraModeBase* Mode = GetCameraMode();
+	if (Mode)
 	{
-		return CachedPawn->GetActorRotation();
+		UNamiCameraComponent* CameraComponent = Mode->GetCameraComponent();
+		if (CameraComponent)
+		{
+			APawn* OwnerPawn = CameraComponent->GetOwnerPawn();
+			if (OwnerPawn)
+			{
+				return OwnerPawn->GetActorRotation();
+			}
+		}
 	}
 	
 	// 回退：使用 PivotRotation（相机朝向）
 	return InState.PivotRotation;
 }
 
-void UNamiCameraAdjustFeature::CheckWholeEffectInterrupt(float DeltaTime)
+FVector2D UNamiCameraAdjustFeature::GetPlayerCameraInputVector() const
 {
-	if (bIsExiting || InputInterruptCooldownTimer > 0.0f)
+	if (bInputVectorCacheValid)
 	{
-		return;
+		return CachedInputVector;
 	}
-
-	float InputMagnitude = GetPlayerCameraInputMagnitude();
-	if (InputMagnitude > InterruptInputThreshold)
+	
+	FVector2D InputVector = FVector2D::ZeroVector;
+	
+	// 从 CameraMode 获取输入提供者
+	UNamiCameraModeBase* Mode = GetCameraMode();
+	if (IsValid(Mode))
 	{
-		// 触发打断
-		InterruptEffect();
-		InputInterruptCooldownTimer = InterruptCooldown;
+		UNamiCameraComponent* CameraComp = Mode->GetCameraComponent();
+		if (IsValid(CameraComp))
+		{
+			APlayerController* PC = CameraComp->GetOwnerPlayerController();
+			if (IsValid(PC) && PC->GetClass()->ImplementsInterface(UNamiCameraInputProvider::StaticClass()))
+			{
+				// 使用 Execute_ 方法调用，支持蓝图实现
+				InputVector = INamiCameraInputProvider::Execute_GetCameraInputVector(PC);
+			}
+		}
 	}
-}
-
-void UNamiCameraAdjustFeature::CheckViewControlInterrupt()
-{
-	if (bViewControlInterrupted || 
-		AdjustConfig.ControlMode == ENamiCameraControlMode::Forced ||
-		!AdjustConfig.ControlRotationOffset.bEnabled)
-	{
-		return;
-	}
-
-	float InputMagnitude = GetPlayerCameraInputMagnitude();
-	if (InputMagnitude > ViewControlInputThreshold)
-	{
-		// 视角控制被输入打断
-		bViewControlInterrupted = true;
-		// 禁用 ControlRotationOffset
-		AdjustConfig.ControlRotationOffset.bEnabled = false;
-	}
+	
+	CachedInputVector = InputVector;
+	bInputVectorCacheValid = true;
+	
+	return InputVector;
 }
 
 float UNamiCameraAdjustFeature::GetPlayerCameraInputMagnitude() const
 {
-	FVector2D InputVector = FVector2D::ZeroVector;
-
-	// 优先使用输入提供者接口（解耦设计）
-	if (InputProvider.GetInterface())
+	if (bInputMagnitudeCacheValid)
 	{
-		// 调用接口方法（如果类实现了 _Implementation，会调用实现；否则返回零向量）
-		InputVector = InputProvider->Execute_GetCameraInputVector(InputProvider.GetObject());
+		return CachedInputMagnitude;
 	}
-	else if (CachedPlayerController.IsValid())
-	{
-		// 尝试从 PlayerController 获取接口
-		if (INamiCameraInputProvider* InputProviderInterface = Cast<INamiCameraInputProvider>(CachedPlayerController.Get()))
-		{
-			InputVector = InputProviderInterface->GetCameraInputVector();
-		}
-		else
-		{
-			// 没有实现接口，输出警告
-			static bool bHasWarned = false;
-			if (!bHasWarned)
-			{
-				NAMI_LOG_WARNING(TEXT("[UNamiCameraAdjustFeature] PlayerController 未实现 INamiCameraInputProvider 接口，无法获取相机输入。请让 PlayerController 实现此接口。"));
-				bHasWarned = true;
-			}
-		}
-	}
-	else
-	{
-		// 没有 PlayerController，输出警告
-		static bool bHasWarned = false;
-		if (!bHasWarned)
-		{
-			NAMI_LOG_WARNING(TEXT("[UNamiCameraAdjustFeature] 无法获取 PlayerController，无法获取相机输入。"));
-			bHasWarned = true;
-		}
-	}
-
-	// 返回输入向量的大小
-	return InputVector.Size();
+	
+	FVector2D InputVector = GetPlayerCameraInputVector();
+	CachedInputMagnitude = InputVector.Size();
+	bInputMagnitudeCacheValid = true;
+	
+	return CachedInputMagnitude;
 }
 
-void UNamiCameraAdjustFeature::UpdateCachedReferences()
-{
-	UNamiCameraModeBase* Mode = GetCameraMode();
-	if (!Mode)
-	{
-		return;
-	}
-
-	UNamiCameraComponent* CameraComponent = Mode->GetCameraComponent();
-	if (!CameraComponent)
-	{
-		return;
-	}
-
-	CachedPlayerController = CameraComponent->GetOwnerPlayerController();
-	CachedPawn = CameraComponent->GetOwnerPawn();
-}
-
-void UNamiCameraAdjustFeature::SetInputProvider(TScriptInterface<INamiCameraInputProvider> InInputProvider)
-{
-	InputProvider = InInputProvider;
-}
 

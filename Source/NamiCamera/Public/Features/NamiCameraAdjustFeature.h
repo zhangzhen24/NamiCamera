@@ -7,7 +7,6 @@
 #include "Structs/Modify/NamiCameraModifyTypes.h"
 #include "Structs/State/NamiCameraState.h"
 #include "Enums/NamiCameraEnums.h"
-#include "Interfaces/NamiCameraInputProvider.h"
 #include "NamiCameraAdjustFeature.generated.h"
 
 /**
@@ -16,7 +15,6 @@
  * 功能：
  * - 调整相机参数（吊臂、旋转、枢轴点等）
  * - 支持 BlendIn/BlendOut 混合
- * - 支持输入打断
  * - 支持 Additive/Override 混合模式
  * 
  * 使用场景：
@@ -49,7 +47,7 @@ public:
 	virtual void Activate_Implementation() override;
 	virtual void Update_Implementation(float DeltaTime) override;
 	virtual void ApplyEffect_Implementation(FNamiCameraView& InOutView, float Weight, float DeltaTime) override;
-	virtual bool CheckInputInterrupt() const override;
+	virtual void DeactivateEffect(bool bForceImmediate = false) override;
 
 	// ========== 配置 ==========
 
@@ -62,65 +60,44 @@ public:
 	FNamiCameraStateModify AdjustConfig;
 
 	/**
-	 * 是否启用输入打断（整段效果）
-	 * 当玩家输入超过阈值时，整个效果按打断混出时间退出
+	 * 最大角度变化速度（度/秒）
+	 * 用于限制 PivotRotation 的变化速度，防止鼠标快速输入时导致 PivotLocation 跳变
+	 * 0 表示不限制（使用最短路径直接变化）
+	 * 
+	 * 建议值：
+	 * - 默认：720.0（每秒2圈，适合大多数情况）
+	 * - 快速响应：1080.0（每秒3圈）
+	 * - 平滑响应：360.0（每秒1圈）
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjust|Input",
-			  meta = (DisplayName = "允许输入打断整段效果",
-					  Tooltip = "开启后，当玩家输入超过阈值时，整个效果按打断混出时间退出"))
-	bool bAllowInputInterruptWholeEffect = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjust|Smoothing",
+			  meta = (ClampMin = "0.0", UIMin = "0.0", DisplayName = "最大角度变化速度（度/秒）"))
+	float MaxPivotRotationSpeed = 720.0f;
 
-	/**
-	 * 输入触发打断的阈值（整段打断）
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjust|Input",
-			  meta = (DisplayName = "打断阈值",
-					  EditCondition = "bAllowInputInterruptWholeEffect",
-					  ClampMin = "0.01", ClampMax = "0.5",
-					  Tooltip = "玩家输入超过此值触发整段效果打断；建议与视角控制阈值保持一致，默认 0.1"))
-	float InterruptInputThreshold = 0.1f;
+protected:
+	// ========== 内部状态（用于结束/打断流程） ==========
+	/** 混出开始时的相机旋转（用于保持旋转） */
+	FRotator ExitStartCameraRotation;
+	bool bHasExitStartCameraRotation = false;
 
-	/**
-	 * 打断冷却时间，避免抖动反复触发
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjust|Input",
-			  meta = (DisplayName = "打断冷却时间",
-					  EditCondition = "bAllowInputInterruptWholeEffect",
-					  ClampMin = "0.0", ClampMax = "1.0",
-					  Tooltip = "触发一次打断后，冷却期内不再重复触发；默认 0.15"))
-	float InterruptCooldown = 0.15f;
+	/** 混出开始时的旋转状态（bAllowPlayerInput=false 时保存全部旋转参数） */
+	FNamiCameraState ExitStartRotationState;
+	bool bHasExitStartRotationState = false;
 
-	/**
-	 * 是否启用视角控制打断
-	 * 当玩家有相机输入时，是否打断视角控制（ControlRotationOffset）
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjust|Input",
-			  meta = (DisplayName = "允许视角控制打断",
-					  EditCondition = "AdjustConfig.ControlRotationOffset.bEnabled && AdjustConfig.ControlMode != ENamiCameraControlMode::Forced",
-					  Tooltip = "开启后，玩家有相机输入时会打断视角控制"))
-	bool bAllowViewControlInterrupt = true;
+	/** 混出开始时的完整状态（打断后从当前镜头起点混出） */
+	FNamiCameraState ExitStartState;
+	bool bHasExitStartState = false;
 
-	/**
-	 * 视角控制输入阈值
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Adjust|Input",
-			  meta = (DisplayName = "视角控制输入阈值",
-					  EditCondition = "bAllowViewControlInterrupt",
-					  ClampMin = "0.01", ClampMax = "0.5",
-					  Tooltip = "相机输入死区，低于此值不触发视角打断；推荐 0.1（10%）"))
-	float ViewControlInputThreshold = 0.1f;
+	/** 上一帧输出的 State（打断首帧备用） */
+	FNamiCameraState LastOutputState;
+	bool bHasLastOutputState = false;
 
-	/**
-	 * 设置输入提供者
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Camera Adjust Feature")
-	void SetInputProvider(TScriptInterface<INamiCameraInputProvider> InInputProvider);
-
-	/**
-	 * 获取输入提供者
-	 */
-	UFUNCTION(BlueprintPure, Category = "Camera Adjust Feature")
-	TScriptInterface<INamiCameraInputProvider> GetInputProvider() const { return InputProvider; }
+	// ========== 输入打断相关 ==========
+	mutable FVector2D CachedInputVector = FVector2D::ZeroVector;
+	mutable bool bInputVectorCacheValid = false;
+	mutable float CachedInputMagnitude = 0.0f;
+	mutable bool bInputMagnitudeCacheValid = false;
+	float InputAccumulationTime = 0.0f;
+	bool bInputEnabledOnInterrupt = false;
 
 protected:
 	// ========== State 计算相关 ==========
@@ -128,7 +105,28 @@ protected:
 	/**
 	 * 从视图构建初始 State
 	 */
-	FNamiCameraState BuildInitialStateFromView(const FNamiCameraView& View) const;
+	FNamiCameraState BuildInitialStateFromView(const FNamiCameraView& View);
+
+	/**
+	 * 从 View 反推 State 参数（用于参数混合）
+	 * 从 CameraLocation 和 PivotLocation 反推出 ArmLength、ArmRotation、ArmOffset
+	 * 
+	 * @param View 当前视图
+	 * @param DeltaTime 帧时间（用于角度变化速度限制）
+	 * @return 反推出的 State（包含当前参数）
+	 */
+	FNamiCameraState BuildCurrentStateFromView(const FNamiCameraView& View, float DeltaTime = 0.0f) const;
+
+	/**
+	 * 在 State 层面混合参数
+	 * 只混合影响位置的参数（ArmLength、ArmRotation、ArmOffset），保证焦点不变
+	 * 
+	 * @param CurrentState 当前 State（会被修改）
+	 * @param TargetState 目标 State
+	 * @param Weight 混合权重（0.0 = 完全使用 Current，1.0 = 完全使用 Target）
+	 * @param bFreezeRotations 是否冻结旋转参数（混出时使用）
+	 */
+	void BlendParametersInState(FNamiCameraState& CurrentState, const FNamiCameraState& TargetState, float Weight, bool bFreezeRotations = false) const;
 
 	/**
 	 * 应用调整配置到 State
@@ -152,39 +150,19 @@ protected:
 	 */
 	FRotator GetCharacterRotation(const FNamiCameraState& InState) const;
 
-	// ========== 输入打断相关 ==========
-
 	/**
-	 * 检查整段效果输入打断
+	 * 获取玩家相机输入向量
+	 * @return 输入向量 (X=Yaw, Y=Pitch)，范围 [-1.0, 1.0]
 	 */
-	void CheckWholeEffectInterrupt(float DeltaTime);
+	FVector2D GetPlayerCameraInputVector() const;
 
 	/**
-	 * 检查视角控制输入打断
-	 */
-	void CheckViewControlInterrupt();
-
-	/**
-	 * 获取玩家输入大小
+	 * 获取玩家相机输入大小
+	 * @return 输入大小（0.0 = 无输入，1.0 = 最大输入）
 	 */
 	float GetPlayerCameraInputMagnitude() const;
 
-	/**
-	 * 更新缓存的引用
-	 */
-	void UpdateCachedReferences();
-
 	// ========== 内部状态 ==========
-
-	/** 输入提供者 */
-	UPROPERTY()
-	TScriptInterface<INamiCameraInputProvider> InputProvider;
-
-	/** 缓存的 PlayerController */
-	TWeakObjectPtr<APlayerController> CachedPlayerController;
-
-	/** 缓存的 Pawn */
-	TWeakObjectPtr<APawn> CachedPawn;
 
 	/** 缓存的初始 State */
 	FNamiCameraState CachedInitialState;
@@ -192,13 +170,16 @@ protected:
 	/** 是否已缓存初始 State */
 	bool bHasCachedInitialState = false;
 
-	/** 输入打断冷却计时器 */
-	float InputInterruptCooldownTimer = 0.0f;
+	/** 上一帧的 PivotRotation（用于确保最短路径，避免跳变） */
+	mutable FRotator LastPivotRotation;
 
-	/** 视角控制是否被输入打断 */
-	bool bViewControlInterrupted = false;
+	/** 是否有上一帧的 PivotRotation 数据 */
+	mutable bool bHasLastPivotRotation = false;
 
-	/** 上一帧的相机输入大小 */
-	float LastCameraInputMagnitude = 0.0f;
+	/** 上一帧的 CharacterRotation（用于确保最短路径，避免跳变） */
+	mutable FRotator LastCharacterRotation;
+
+	/** 是否有上一帧的 CharacterRotation 数据 */
+	mutable bool bHasLastCharacterRotation = false;
 };
 

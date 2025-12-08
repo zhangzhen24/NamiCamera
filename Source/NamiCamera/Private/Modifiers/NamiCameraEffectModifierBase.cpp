@@ -156,25 +156,6 @@ void UNamiCameraEffectModifierBase::ResumeEffect()
 	NAMI_LOG_EFFECT(Verbose, TEXT("[UNamiCameraEffectModifierBase] 恢复效果：%s"), *EffectName.ToString());
 }
 
-void UNamiCameraEffectModifierBase::InterruptEffect()
-{
-	if (!bIsActive)
-	{
-		return;
-	}
-	
-	// 使用打断混合时间
-	float OriginalBlendOutTime = BlendOutTime;
-	BlendOutTime = InterruptBlendTime;
-	
-	DeactivateEffect(false);
-	
-	// 恢复原始混合时间（以防重复使用）
-	BlendOutTime = OriginalBlendOutTime;
-	
-	NAMI_LOG_EFFECT(Log, TEXT("[UNamiCameraEffectModifierBase] 打断效果：%s，混合时间：%.2f"), 
-		*EffectName.ToString(), InterruptBlendTime);
-}
 
 float UNamiCameraEffectModifierBase::CalculateBlendWeight(float DeltaTime)
 {

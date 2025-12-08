@@ -137,6 +137,69 @@ public:
 	}
 
 	/**
+	 * 角度归一化到0-360度范围
+	 * 避免-180到180的跳变问题，确保角度值在[0, 360)范围内
+	 * 
+	 * @param AngleDeg 输入角度（度）
+	 * @return 归一化后的角度（度），范围[0, 360)
+	 */
+	static FORCEINLINE float NormalizeAngleTo360(float AngleDeg)
+	{
+		AngleDeg = FMath::Fmod(AngleDeg, 360.0f);
+		if (AngleDeg < 0.0f)
+		{
+			AngleDeg += 360.0f;
+		}
+		return AngleDeg;
+	}
+
+	/**
+	 * 旋转体归一化到0-360度范围
+	 * 将Pitch、Yaw、Roll都归一化到[0, 360)范围
+	 * 
+	 * @param Rot 输入旋转
+	 * @return 归一化后的旋转，所有分量都在[0, 360)范围
+	 */
+	static FORCEINLINE FRotator NormalizeRotatorTo360(const FRotator& Rot)
+	{
+		FRotator Result;
+		Result.Pitch = NormalizeAngleTo360(Rot.Pitch);
+		Result.Yaw = NormalizeAngleTo360(Rot.Yaw);
+		Result.Roll = NormalizeAngleTo360(Rot.Roll);
+		return Result;
+	}
+
+	/**
+	 * 角度差值计算（基于0-360度范围）
+	 * 返回从Current到Target的最短路径差值
+	 * 
+	 * @param CurrentDeg 当前角度（度），应该在[0, 360)范围
+	 * @param TargetDeg 目标角度（度），应该在[0, 360)范围
+	 * @return 最短路径的差值（度），范围[-180, 180]
+	 */
+	static FORCEINLINE float FindDeltaAngle360(float CurrentDeg, float TargetDeg)
+	{
+		// 确保输入在0-360度范围
+		CurrentDeg = NormalizeAngleTo360(CurrentDeg);
+		TargetDeg = NormalizeAngleTo360(TargetDeg);
+		
+		// 计算差值
+		float Delta = TargetDeg - CurrentDeg;
+		
+		// 处理跨越0度的情况，选择最短路径
+		if (Delta > 180.0f)
+		{
+			Delta -= 360.0f;
+		}
+		else if (Delta < -180.0f)
+		{
+			Delta += 360.0f;
+		}
+		
+		return Delta;
+	}
+
+	/**
 	 * 平滑强度映射
 	 * 将0.0-1.0的平滑强度映射到0.0-2.0的实际平滑时间
 	 * 使用非线性映射，使调整更加直观

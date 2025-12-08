@@ -16,26 +16,29 @@
 // ========== 内部辅助宏 ==========
 
 /**
- * 统一的日志打印宏
- * 同时输出到 Log 和屏幕（如果启用）
+ * 统一的日志打印宏（Log输出）
+ * 输出到 Log 窗口
  */
-#define NAMI_LOG_INTERNAL(Verbosity, Format, ...) \
+#define NAMI_LOG_TO_LOG(Verbosity, Format, ...) \
 	do { \
-		/* 输出到 Log */ \
 		UE_LOG(LogNamiCamera, Verbosity, Format, ##__VA_ARGS__); \
-		/* 输出到屏幕（如果启用） */ \
-		if (UNamiCameraSettings::ShouldShowOnScreenLog()) \
+	} while(0)
+
+/**
+ * 统一的日志打印宏（屏幕输出）
+ * 输出到屏幕
+ */
+#define NAMI_LOG_TO_SCREEN(Format, ...) \
+	do { \
+		const float OnScreenDuration = UNamiCameraSettings::GetOnScreenLogDuration(); \
+		const FLinearColor OnScreenColor = UNamiCameraSettings::GetOnScreenLogTextColor(); \
+		if (GEngine) \
 		{ \
-			const float OnScreenDuration = UNamiCameraSettings::GetOnScreenLogDuration(); \
-			const FLinearColor OnScreenColor = UNamiCameraSettings::GetOnScreenLogTextColor(); \
-			if (GEngine) \
-			{ \
-				/* 格式化消息用于屏幕显示 */ \
-				FString OnScreenMessage = FString::Printf(Format, ##__VA_ARGS__); \
-				/* 使用 -1 作为 Key 表示每次都是新消息（会覆盖同 Key 的消息） */ \
-				/* Duration = 0 表示持续显示（每帧刷新） */ \
-				GEngine->AddOnScreenDebugMessage(-1, OnScreenDuration, OnScreenColor.ToFColor(true), *OnScreenMessage); \
-			} \
+			/* 格式化消息用于屏幕显示 */ \
+			FString OnScreenMessage = FString::Printf(Format, ##__VA_ARGS__); \
+			/* 使用 -1 作为 Key 表示每次都是新消息（会覆盖同 Key 的消息） */ \
+			/* Duration = 0 表示持续显示（每帧刷新） */ \
+			GEngine->AddOnScreenDebugMessage(-1, OnScreenDuration, OnScreenColor.ToFColor(true), *OnScreenMessage); \
 		} \
 	} while(0)
 
@@ -44,7 +47,11 @@
 	do { \
 		if (UNamiCameraSettings::ShouldLogEffect()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogEffectOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
@@ -53,7 +60,11 @@
 	do { \
 		if (UNamiCameraSettings::ShouldLogStateCalculation()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogStateCalculationOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
@@ -62,7 +73,11 @@
 	do { \
 		if (UNamiCameraSettings::ShouldLogANS()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogANSOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
@@ -71,7 +86,11 @@
 	do { \
 		if (UNamiCameraSettings::ShouldLogComponent()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogComponentOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
@@ -80,7 +99,11 @@
 	do { \
 		if (UNamiCameraSettings::ShouldLogMode()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogModeOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
@@ -89,7 +112,11 @@
 	do { \
 		if (UNamiCameraSettings::ShouldLogLibrary()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogLibraryOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
@@ -98,35 +125,69 @@
 	do { \
 		if (UNamiCameraSettings::ShouldLogBlendProbe()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogBlendProbeOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
-// ========== 警告日志（默认开启）==========
+// ========== 警告日志 ==========
 #define NAMI_LOG_WARNING(Format, ...) \
 	do { \
 		if (UNamiCameraSettings::ShouldLogWarning()) \
 		{ \
-			NAMI_LOG_INTERNAL(Warning, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Warning, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogWarningOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
-// ========== 构图日志（使用现有开关）==========
+// ========== 构图日志（使用现有开关，暂不支持屏幕输出）==========
 #define NAMI_LOG_FRAMING(Verbosity, Format, ...) \
 	do { \
 		const UNamiCameraSettings* FramingLogSettings = UNamiCameraSettings::Get(); \
 		if (FramingLogSettings && FramingLogSettings->bEnableFramingLog) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 
-// ========== 堆栈日志（使用现有开关）==========
+// ========== 输入打断日志 ==========
+#define NAMI_LOG_INPUT_INTERRUPT(Verbosity, Format, ...) \
+	do { \
+		if (UNamiCameraSettings::ShouldLogInputInterrupt()) \
+		{ \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogInputInterruptOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
+		} \
+	} while(0)
+
+// ========== 堆栈日志（使用现有开关，暂不支持屏幕输出）==========
 #define NAMI_LOG_STACK(Verbosity, Format, ...) \
 	do { \
 		if (UNamiCameraSettings::ShouldEnableStackDebugLog()) \
 		{ \
-			NAMI_LOG_INTERNAL(Verbosity, Format, ##__VA_ARGS__); \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+	} while(0)
+
+// ========== 相机信息日志（关键相机参数）==========
+#define NAMI_LOG_CAMERA_INFO(Verbosity, Format, ...) \
+	do { \
+		if (UNamiCameraSettings::ShouldLogCameraInfo()) \
+		{ \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogCameraInfoOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \
 	} while(0)
 

@@ -77,12 +77,6 @@ public:
 	void ResumeEffect();
 	
 	/**
-	 * 打断效果（使用打断混合时间）
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Camera Effect")
-	void InterruptEffect();
-	
-	/**
 	 * 获取当前混合权重
 	 */
 	UFUNCTION(BlueprintPure, Category = "Camera Effect")
@@ -141,22 +135,6 @@ public:
 					  Tooltip = "混合回去：平滑过渡回原状态\n立即结束：无过渡直接切回\n保持效果：不结束，需手动停止"))
 	ENamiCameraEndBehavior EndBehavior = ENamiCameraEndBehavior::BlendBack;
 	
-	/** 
-	 * 允许输入打断
-	 * 当玩家有输入时是否打断效果
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect|Behavior",
-			  meta = (DisplayName = "允许输入打断",
-					  Tooltip = "启用后，玩家有移动/攻击等输入时会打断效果"))
-	bool bAllowInputInterrupt = false;
-	
-	/** 打断时的混合时间 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect|Behavior",
-			  meta = (DisplayName = "打断混合时间",
-					  EditCondition = "bAllowInputInterrupt",
-					  ClampMin = "0.0", ClampMax = "2.0",
-					  Tooltip = "被打断时的混合退出时间"))
-	float InterruptBlendTime = 0.15f;
 
 protected:
 	/** 当前混合权重 */

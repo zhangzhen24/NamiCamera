@@ -2,6 +2,7 @@
 
 #include "Modes/Presets/NamiShoulderCamera.h"
 #include "Libraries/NamiCameraMath.h"
+#include "Features/NamiSpringArmFeature.h"
 
 UNamiShoulderCamera::UNamiShoulderCamera()
 {
@@ -17,7 +18,6 @@ UNamiShoulderCamera::UNamiShoulderCamera()
 
     // 启用平滑，获得更流畅的体验
     bEnableSmoothing = true;
-    PivotSmoothIntensity = 0.0f;
     CameraLocationSmoothIntensity = 0.15f;
     CameraRotationSmoothIntensity = 0.1f;
 
@@ -74,6 +74,9 @@ FNamiCameraView UNamiShoulderCamera::CalculateView_Implementation(float DeltaTim
         ControlRotation.Roll = 0.0f;
     }
 
+    // 使用0-360度归一化，避免180/-180跳变问题
+    ControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
+
     // 3. 应用肩部偏移
     FVector ShoulderOffsetVector = FVector::ZeroVector;
     if (bUseCharacterFacing)
@@ -114,6 +117,10 @@ FNamiCameraView UNamiShoulderCamera::CalculateView_Implementation(float DeltaTim
     {
         SpringArmFeature->SpringArm.TargetArmLength = OriginalCameraDistance;
     }
+
+    // 使用0-360度归一化，避免180/-180跳变问题
+    View.CameraRotation = FNamiCameraMath::NormalizeRotatorTo360(View.CameraRotation);
+    View.ControlRotation = FNamiCameraMath::NormalizeRotatorTo360(View.ControlRotation);
 
     LastCameraRotation = View.CameraRotation;
 

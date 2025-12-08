@@ -182,15 +182,23 @@ struct NAMICAMERA_API FNamiCameraStateModify
 	float CameraInputThreshold = 0.1f;
 	
 	/** 
-	 * 输入打断时的混合时间
-	 * 当玩家输入打断视角控制时的退出混合时间
+	 * 是否允许玩家输入
+	 * 
+	 * false（不接入输入）：
+	 *   - CameraAdjust 完全控制所有参数
+	 *   - 玩家输入被忽略
+	 *   - 全程由 CameraAdjust 接管，不支持输入打断
+	 * 
+	 * true（接入输入）：
+	 *   - CameraAdjust 只控制位置参数（ArmLength, ArmOffset, PivotLocation）
+	 *   - 玩家输入控制旋转参数（ArmRotation, CameraRotationOffset, PivotRotation）
+	 *   - 始终允许玩家输入
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Control",
-			  meta = (DisplayName = "打断混合时间",
-					  EditCondition = "ControlRotationOffset.bEnabled && ControlMode != ENamiCameraControlMode::Forced",
-					  ClampMin = "0.0", ClampMax = "2.0",
-					  Tooltip = "被打断时的混合退出时间"))
-	float InputInterruptBlendTime = 0.15f;
+			  meta = (DisplayName = "允许玩家输入",
+					  Tooltip = "开启后，玩家输入控制旋转参数，CameraAdjust 控制位置参数"))
+	bool bAllowPlayerInput = false;
+	
 	
 	// ==================== 相机参数修改 ====================
 	
@@ -226,6 +234,14 @@ struct NAMICAMERA_API FNamiCameraStateModify
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output",
 			  meta = (DisplayName = "最终相机旋转"))
 	FNamiRotatorModify CameraRotation;
+
+	// ==================== 混出设置 ====================
+	
+	/** 混出时保持相机旋转 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blend Out",
+			  meta = (DisplayName = "混出时保持相机旋转",
+					  Tooltip = "如果启用，在混出（BlendOut）时，相机旋转会保持在混出开始时的状态，不会混合回默认值。\n如果禁用，相机旋转会正常混合回默认值。"))
+	bool bPreserveCameraRotationOnExit = true;
 
 	// ==================== 方法 ====================
 	

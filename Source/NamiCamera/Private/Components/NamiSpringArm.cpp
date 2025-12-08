@@ -6,34 +6,52 @@
 #include "Engine/World.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 #include "DrawDebugHelpers.h"
+#include "Libraries/NamiCameraMath.h"
 
 //////////////////////////////////////////////////////////////////////////
 // FNamiSpringArm
 
 void FNamiSpringArm::ApplyRotationLag(FRotator &InOutDesiredRot, float DeltaTime)
 {
+	// 使用0-360度归一化，避免180/-180跳变问题
+	FRotator NormalizedDesiredRot = FNamiCameraMath::NormalizeRotatorTo360(InOutDesiredRot);
+	FRotator NormalizedPreviousRot = FNamiCameraMath::NormalizeRotatorTo360(PreviousDesiredRot);
+	
 	if (bUseCameraLagSubstepping && DeltaTime > CameraLagMaxTimeStep && CameraRotationLagSpeed > 0.f)
 	{
-		const FRotator ArmRotStep = (InOutDesiredRot - PreviousDesiredRot).GetNormalized() * (1.f / DeltaTime);
-		FRotator LerpTarget = PreviousDesiredRot;
+		// 计算角度差值（使用0-360度范围，避免跳变）
+		FRotator ArmRotStep;
+		ArmRotStep.Pitch = FNamiCameraMath::FindDeltaAngle360(NormalizedPreviousRot.Pitch, NormalizedDesiredRot.Pitch) * (1.f / DeltaTime);
+		ArmRotStep.Yaw = FNamiCameraMath::FindDeltaAngle360(NormalizedPreviousRot.Yaw, NormalizedDesiredRot.Yaw) * (1.f / DeltaTime);
+		ArmRotStep.Roll = FNamiCameraMath::FindDeltaAngle360(NormalizedPreviousRot.Roll, NormalizedDesiredRot.Roll) * (1.f / DeltaTime);
+		
+		FRotator LerpTarget = NormalizedPreviousRot;
 		float RemainingTime = DeltaTime;
 
 		while (RemainingTime > KINDA_SMALL_NUMBER)
 		{
 			const float LerpAmount = FMath::Min(CameraLagMaxTimeStep, RemainingTime);
-			LerpTarget += ArmRotStep * LerpAmount;
+			// 优化：直接应用步进，最后归一化一次
+			LerpTarget.Pitch = LerpTarget.Pitch + ArmRotStep.Pitch * LerpAmount;
+			LerpTarget.Yaw = LerpTarget.Yaw + ArmRotStep.Yaw * LerpAmount;
+			LerpTarget.Roll = LerpTarget.Roll + ArmRotStep.Roll * LerpAmount;
+			// 确保 LerpTarget 在0-360度范围（只归一化一次）
+			LerpTarget = FNamiCameraMath::NormalizeRotatorTo360(LerpTarget);
 			RemainingTime -= LerpAmount;
 
-			InOutDesiredRot = FRotator(FMath::QInterpTo(FQuat(PreviousDesiredRot), FQuat(LerpTarget), LerpAmount, CameraRotationLagSpeed));
-			PreviousDesiredRot = InOutDesiredRot;
+			// 使用四元数插值（QInterpTo会自动处理最短路径）
+			InOutDesiredRot = FRotator(FMath::QInterpTo(FQuat(NormalizedPreviousRot), FQuat(LerpTarget), LerpAmount, CameraRotationLagSpeed));
+			NormalizedPreviousRot = FNamiCameraMath::NormalizeRotatorTo360(InOutDesiredRot);
 		}
 	}
 	else
 	{
-		InOutDesiredRot = FRotator(FMath::QInterpTo(FQuat(PreviousDesiredRot), FQuat(InOutDesiredRot), DeltaTime, CameraRotationLagSpeed));
+		// 使用四元数插值（QInterpTo会自动处理最短路径）
+		InOutDesiredRot = FRotator(FMath::QInterpTo(FQuat(NormalizedPreviousRot), FQuat(NormalizedDesiredRot), DeltaTime, CameraRotationLagSpeed));
 	}
 
-	PreviousDesiredRot = InOutDesiredRot;
+	// 保存归一化后的值，确保下一帧计算时使用0-360度范围
+	PreviousDesiredRot = FNamiCameraMath::NormalizeRotatorTo360(InOutDesiredRot);
 }
 
 void FNamiSpringArm::ApplyLocationLag(FVector &InOutDesiredLoc, const FVector &ArmOrigin, UWorld *World, float DeltaTime)
@@ -193,7 +211,6 @@ FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector
 			if (bHitSomething)
 			{
 				DrawDebugSphere(World, TraceHitLocation, ProbeSize, 12, FColor::Red, false, -1.0f);
-				DrawDebugString(World, TraceHitLocation + FVector(0, 0, 20), TEXT("Hit"), nullptr, FColor::Red, 0.0f, true);
 			}
 			
 			// 绘制探针球体

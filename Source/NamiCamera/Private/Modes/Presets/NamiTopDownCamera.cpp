@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "Libraries/NamiCameraMath.h"
 #include "LogNamiCamera.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiTopDownCamera)
@@ -61,15 +62,6 @@ void UNamiTopDownCamera::Initialize_Implementation(UNamiCameraComponent *InCamer
 
 FNamiCameraView UNamiTopDownCamera::CalculateView_Implementation(float DeltaTime)
 {
-    // 调试：输出当前配置（每 60 帧输出一次，避免刷屏）
-    static int32 FrameCounter = 0;
-    if (++FrameCounter % 60 == 0)
-    {
-        UE_LOG(LogNamiCamera, Log, TEXT("[TopDownCamera::CalculateView] 当前配置 - 预设: %d, 方向: %d (Yaw: %.1f°), 角度: %.1f°, 高度: %.1f, 锁定: %s"),
-            (int32)TopDownPreset, (int32)CameraDirection, GetDirectionYaw(), FixedPitchAngle, CameraHeight, 
-            bLockCameraRotation ? TEXT("是") : TEXT("否"));
-    }
-    
     // 1. 计算观察点（PivotLocation）
     FVector TargetPivot = CalculatePivotLocation();
     TargetPivot.Z += PivotHeightOffset;
@@ -112,6 +104,8 @@ FNamiCameraView UNamiTopDownCamera::CalculateView_Implementation(float DeltaTime
                 if (APlayerController* PC = Cast<APlayerController>(Pawn->GetController()))
                 {
                     ControlRotation = PC->GetControlRotation();
+                    // 使用0-360度归一化，避免180/-180跳变问题
+                    ControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
                 }
             }
         }
@@ -176,6 +170,9 @@ FNamiCameraView UNamiTopDownCamera::CalculateView_Implementation(float DeltaTime
     // 重新计算 FinalRotation，使用用户设置的观察方向
     FinalRotation = FRotator(-CurrentPitchAngle, LookAtYaw, 0.0f);
     
+    // 使用0-360度归一化，避免180/-180跳变问题
+    FinalRotation = FNamiCameraMath::NormalizeRotatorTo360(FinalRotation);
+    
     // 调试日志
     UE_LOG(LogNamiCamera, Verbose, TEXT("[TopDownCamera] 位置计算 - Pivot: %s, LookAtYaw: %.1f°(观察), PositionYaw: %.1f°(位置), HorizontalDist: %.1f, Offset: %s, FinalLoc: %s"),
         *SmoothedPivot.ToString(), LookAtYaw, PositionYaw, HorizontalDistance, *HorizontalOffset.ToString(), *CameraLocation.ToString());
@@ -222,9 +219,10 @@ FNamiCameraView UNamiTopDownCamera::CalculateView_Implementation(float DeltaTime
     FNamiCameraView View;
     View.PivotLocation = SmoothedPivot;
     View.CameraLocation = CameraLocation;
-    View.CameraRotation = FinalRotation;  // 使用计算的旋转，确保方向正确
+    // 使用0-360度归一化，避免180/-180跳变问题
+    View.CameraRotation = FNamiCameraMath::NormalizeRotatorTo360(FinalRotation);  // 使用计算的旋转，确保方向正确
     View.ControlLocation = SmoothedPivot;
-    View.ControlRotation = FinalRotation;
+    View.ControlRotation = FNamiCameraMath::NormalizeRotatorTo360(FinalRotation);
     View.FOV = DefaultFOV;
     
     // 调试日志：验证最终结果

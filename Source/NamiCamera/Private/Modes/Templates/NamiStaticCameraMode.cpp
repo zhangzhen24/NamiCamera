@@ -64,7 +64,8 @@ FNamiCameraView UNamiStaticCameraMode::CalculateView_Implementation(float DeltaT
 		SmoothedRotation = TargetRotation;
 	}
 
-	View.CameraRotation = SmoothedRotation;
+	// 使用0-360度归一化，避免180/-180跳变问题
+	View.CameraRotation = FNamiCameraMath::NormalizeRotatorTo360(SmoothedRotation);
 
 	// 设置枢轴点
 	if (bUseLookAt)
@@ -159,6 +160,8 @@ FRotator UNamiStaticCameraMode::CalculateLookAtRotation() const
 		return CameraRotation;
 	}
 
-	return Direction.Rotation();
+	// 使用0-360度归一化，避免180/-180跳变问题
+	FRotator Rotation = Direction.Rotation();
+	return FNamiCameraMath::NormalizeRotatorTo360(Rotation);
 }
 

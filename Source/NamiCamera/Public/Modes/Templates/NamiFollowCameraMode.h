@@ -43,6 +43,7 @@ public:
 	// ========== 生命周期 ==========
 	virtual void Activate_Implementation() override;
 	virtual FNamiCameraView CalculateView_Implementation(float DeltaTime) override;
+	virtual FVector CalculatePivotLocation_Implementation(float DeltaTime) override;
 
 	// ========== 目标管理 ==========
 
@@ -108,7 +109,7 @@ protected:
 	// ========== 核心计算（子类可重写）==========
 
 	/**
-	 * 计算 PivotLocation
+	 * 计算 PivotLocation（内部方法）
 	 * 子类可重写此方法来自定义枢轴点计算逻辑
 	 *
 	 * 默认实现：
@@ -118,8 +119,7 @@ protected:
 	 *
 	 * @return 枢轴点位置
 	 */
-	UFUNCTION(BlueprintNativeEvent, Category = "Follow Camera|Calculation")
-	FVector CalculatePivotLocation() const;
+	virtual FVector CalculatePivotLocation() const;
 
 	/**
 	 * 计算相机位置
@@ -150,13 +150,24 @@ protected:
 	 */
 	FRotator GetPrimaryTargetRotation() const;
 
-	/**
-	 * 应用平滑
-	 */
-	void ApplySmoothing(float DeltaTime);
 
 public:
 	// ========== 配置 ==========
+
+	/** 视点偏移（PivotLocation偏移，相对于目标位置） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
+			  meta = (DisplayName = "视点偏移"))
+	FVector PivotLocationOffset = FVector::ZeroVector;
+
+	/** 是否使用控制器旋转（ControlRotation）来计算视点偏移方向 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
+			  meta = (DisplayName = "视点偏移使用控制器旋转"))
+	bool bPivotOffsetUseTargetRotation = true;
+
+	/** 视点偏移是否只使用Yaw旋转（忽略Pitch和Roll） */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
+			  meta = (DisplayName = "视点偏移只用Yaw", EditCondition = "bPivotOffsetUseTargetRotation"))
+	bool bPivotOffsetUseYawOnly = true;
 
 	/** 相机偏移（相对于 PivotLocation） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
@@ -173,9 +184,9 @@ public:
 			  meta = (DisplayName = "只用Yaw", EditCondition = "bUseTargetRotation"))
 	bool bUseYawOnly = true;
 
-	/** 枢轴点额外高度偏移 */
+	/** 枢轴点额外高度偏移（向后兼容，建议使用PivotLocationOffset.Z代替） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "枢轴点高度偏移"))
+			  meta = (DisplayName = "枢轴点高度偏移", Tooltip = "向后兼容属性，建议使用PivotLocationOffset.Z代替。如果PivotLocationOffset.Z为0或很小，此值会被应用。"))
 	float PivotHeightOffset = 0.0f;
 
 	/**
@@ -186,12 +197,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
 			  meta = (DisplayName = "启用平滑", InlineEditConditionToggle))
 	bool bEnableSmoothing = true;
-
-	/** 是否启用观察点平滑 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (DisplayName = "启用观察点平滑", EditCondition = "bEnableSmoothing",
-					  Tooltip = "是否启用观察点（PivotLocation）的平滑跟随"))
-	bool bEnablePivotSmoothing = true;
 
 	/** 是否启用相机位置平滑 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
@@ -206,32 +211,12 @@ public:
 	bool bEnableCameraRotationSmoothing = true;
 
 	/**
-	 * 枢轴点平滑强度
-	 * 控制相机观察点（PivotLocation）跟随目标的平滑程度
-	 * - 配置范围：0.0-1.0
-	 * - 应用范围：映射到0.0-2.0的实际平滑时间
-	 * - 值越小：跟随越快，几乎无延迟，适合快速移动的游戏
-	 * - 值越大：跟随越慢但更平滑，适合慢节奏游戏
-	 *
-	 * 建议值：
-	 * - 俯视角/快节奏：0.0-0.2
-	 * - 第三人称/平衡：0.2-0.5
-	 * - 电影感/慢节奏：0.5-0.8
-	 * - 极致平滑：0.8-1.0
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (DisplayName = "观察点平滑强度", ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
-					  Tooltip = "控制相机观察点跟随目标的平滑程度。配置范围0.0-1.0，实际映射到0.0-2.0的平滑时间。值越小跟随越快，值越大越平滑但延迟越大。"))
-	float PivotSmoothIntensity = 0.0f;
-
-	/**
 	 * 相机位置平滑强度
 	 * 控制相机位置移动的平滑程度
 	 * - 配置范围：0.0-1.0
 	 * - 应用范围：映射到0.0-2.0的实际平滑时间
 	 * - 值越小：相机移动越快，响应更及时
 	 * - 值越大：相机移动越慢，但更平滑
-	 * - 通常应该略大于 PivotSmoothIntensity，以获得更自然的跟随效果
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
 			  meta = (DisplayName = "相机位置平滑强度", ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
@@ -245,7 +230,6 @@ public:
 	 * - 应用范围：映射到0.0-2.0的实际平滑时间
 	 * - 值越小：旋转越快，响应更及时
 	 * - 值越大：旋转越慢，但更平滑
-	 * - 通常可以与 PivotSmoothIntensity 相同或略小
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
 			  meta = (DisplayName = "相机旋转平滑强度", ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
@@ -304,7 +288,6 @@ protected:
 	FRotator CurrentCameraRotation = FRotator::ZeroRotator;
 
 	/** 平滑速度 */
-	FVector PivotVelocity = FVector::ZeroVector;
 	FVector CameraVelocity = FVector::ZeroVector;
 	float YawVelocity = 0.0f;
 	float PitchVelocity = 0.0f;

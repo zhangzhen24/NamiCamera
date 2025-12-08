@@ -6,6 +6,7 @@
 #include "Engine/Engine.h"
 #include "Enums/NamiCameraEnums.h"
 #include "LogNamiCamera.h"
+#include "LogNamiCameraMacros.h"
 
 void FNamiCameraModeStack::PushCameraMode(UNamiCameraModeBase* CameraModeInstance)
 {
@@ -75,7 +76,7 @@ bool FNamiCameraModeStack::EvaluateStack(float DeltaTime, FNamiCameraView& OutCa
 		return false;
 	}
 
-	BlendStack(OutCameraModeView);
+	BlendStack(OutCameraModeView, DeltaTime);
 
 	return true;
 }
@@ -177,7 +178,7 @@ bool FNamiCameraModeStack::UpdateStack(float DeltaTime)
 	return bHasValidCameraMode;
 }
 
-void FNamiCameraModeStack::BlendStack(FNamiCameraView& OutCameraModeView) const
+void FNamiCameraModeStack::BlendStack(FNamiCameraView& OutCameraModeView, float DeltaTime) const
 {
 	const int32 StackSize = CameraModeStack.Num();
 	if (StackSize <= 0)
@@ -185,16 +186,111 @@ void FNamiCameraModeStack::BlendStack(FNamiCameraView& OutCameraModeView) const
 		return;
 	}
 
-    // Get TopCameraMode's view
-    const UNamiCameraModeBase* CameraMode = CameraModeStack[StackSize - 1];
+	// ========== 阶段1: PivotLocation计算和混合 ==========
+	// 使用每个Mode的View中的PivotLocation（已经包含了所有偏移，如PivotHeightOffset）
+	// 这样可以确保混合的PivotLocation与最终View中的PivotLocation一致
+	
+	// 收集所有Mode的PivotLocation和权重
+	struct FPivotLocationData
+	{
+		FVector PivotLocation;
+		float Weight;
+	};
+	
+	TArray<FPivotLocationData> PivotLocations;
+	PivotLocations.Reserve(StackSize);
+	
+	// 从栈底到栈顶遍历（权重从高到低）
+	for (int32 StackIndex = StackSize - 1; StackIndex >= 0; --StackIndex)
+	{
+		const UNamiCameraModeBase* CameraMode = CameraModeStack[StackIndex];
     check(CameraMode);
-    OutCameraModeView = CameraMode->GetView();
-
-	// Blend other camera mode
+		
+		// 使用Mode的View中的PivotLocation（已经包含了所有偏移）
+		// 这确保了PivotLocation与CalculateView中计算的值一致
+		FVector ModePivotLocation = CameraMode->GetView().PivotLocation;
+		
+		// 计算该Mode的混合权重（考虑堆栈权重）
+		float ModeWeight = CameraMode->GetBlendWeight();
+		if (StackIndex < StackSize - 1)
+		{
+			// 对于非栈底Mode，需要考虑前面Mode的权重
+			float AccumulatedWeight = 1.0f;
+			for (int32 PrevIndex = StackSize - 1; PrevIndex > StackIndex; --PrevIndex)
+			{
+				AccumulatedWeight *= (1.0f - CameraModeStack[PrevIndex]->GetBlendWeight());
+			}
+			ModeWeight *= AccumulatedWeight;
+		}
+		
+		PivotLocations.Add({ModePivotLocation, ModeWeight});
+	}
+	
+	// 混合所有PivotLocation（从栈底到栈顶，权重从高到低）
+	FVector BlendedPivotLocation = FVector::ZeroVector;
+	float TotalWeight = 0.0f;
+	
+	for (int32 i = PivotLocations.Num() - 1; i >= 0; --i)
+	{
+		const FPivotLocationData& Data = PivotLocations[i];
+		if (Data.Weight > 0.0f)
+		{
+			if (TotalWeight <= 0.0f)
+			{
+				// 第一个有效权重，直接设置
+				BlendedPivotLocation = Data.PivotLocation;
+				TotalWeight = Data.Weight;
+			}
+			else
+			{
+				// 线性插值混合
+				float BlendAlpha = Data.Weight / (TotalWeight + Data.Weight);
+				BlendedPivotLocation = FMath::Lerp(BlendedPivotLocation, Data.PivotLocation, BlendAlpha);
+				TotalWeight += Data.Weight;
+			}
+		}
+	}
+	
+	// 如果所有权重都为0，使用栈底Mode的PivotLocation
+	if (TotalWeight <= 0.0f && StackSize > 0)
+	{
+		BlendedPivotLocation = PivotLocations[0].PivotLocation;
+	}
+	
+	// ========== 阶段2-4: 计算和混合完整View ==========
+	// 获取栈底Mode的View（作为基础）
+	const UNamiCameraModeBase* BaseCameraMode = CameraModeStack[StackSize - 1];
+	check(BaseCameraMode);
+	OutCameraModeView = BaseCameraMode->GetView();
+	
+	// 应用混合后的PivotLocation
+	OutCameraModeView.PivotLocation = BlendedPivotLocation;
+	
+	// 混合其他Mode的View（从栈底到栈顶）
     for (int32 StackIndex = (StackSize - 2); StackIndex >= 0; --StackIndex)
     {
-        CameraMode = CameraModeStack[StackIndex];
+		const UNamiCameraModeBase* CameraMode = CameraModeStack[StackIndex];
         check(CameraMode);
-        OutCameraModeView.Blend(CameraMode->GetView(), CameraMode->GetBlendWeight());
+		
+		// 计算该Mode的混合权重（考虑堆栈权重）
+		float ModeWeight = CameraMode->GetBlendWeight();
+		if (StackIndex < StackSize - 1)
+		{
+			// 对于非栈底Mode，需要考虑前面Mode的权重
+			float AccumulatedWeight = 1.0f;
+			for (int32 PrevIndex = StackSize - 1; PrevIndex > StackIndex; --PrevIndex)
+			{
+				AccumulatedWeight *= (1.0f - CameraModeStack[PrevIndex]->GetBlendWeight());
+			}
+			ModeWeight *= AccumulatedWeight;
+		}
+		
+		// 混合View（但PivotLocation已经混合好了，所以这里主要是混合其他属性）
+		FNamiCameraView OtherView = CameraMode->GetView();
+		OtherView.PivotLocation = BlendedPivotLocation; // 使用混合后的PivotLocation
+		OutCameraModeView.Blend(OtherView, ModeWeight);
+		
+		// 确保PivotLocation保持为混合后的值
+		OutCameraModeView.PivotLocation = BlendedPivotLocation;
     }
 }

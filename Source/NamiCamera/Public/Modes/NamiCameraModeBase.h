@@ -101,6 +101,16 @@ public:
 	UFUNCTION(BlueprintNativeEvent, Category = "Camera Mode")
 	FNamiCameraView CalculateView(float DeltaTime);
 
+	/**
+	 * 计算PivotLocation（阶段1）
+	 * 子类应该重写此方法来提供具体的PivotLocation计算逻辑
+	 * 
+	 * @param DeltaTime 帧时间
+	 * @return 计算出的PivotLocation
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Camera Mode|Pivot Location")
+	FVector CalculatePivotLocation(float DeltaTime);
+
 	// ========== Feature 管理 ==========
 
 	/**
