@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 #include "Structs/State/NamiCameraStateFlags.h"
 #include "Enums/NamiCameraEnums.h"
-#include "Structs/State/NamiCameraFramingTypes.h"
 #include "NamiCameraState.generated.h"
 
 /**
@@ -220,11 +219,6 @@ public:
 	 * 设置所有修改标志
 	 */
 	void SetAllChangedFlags();
-
-	// ==================== 多目标构图（可选）====================
-
-	/** 应用多目标构图计算结果到输入参数（会设置 ChangedFlags） */
-	void ApplyFramingResult(const FNamiCameraFramingResult& Result);
 
 	// ==================== 便捷设置方法（自动设置 ChangedFlags）====================
 	

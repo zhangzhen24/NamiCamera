@@ -553,40 +553,6 @@ void FNamiCameraState::SetAllChangedFlags()
 	ChangedFlags.SetAll(true);
 }
 
-void FNamiCameraState::ApplyFramingResult(const FNamiCameraFramingResult& Result)
-{
-	if (!Result.bHasResult)
-	{
-		return;
-	}
-
-	// 应用推荐中心 -> PivotLocation
-	PivotLocation = Result.TargetCenter;
-	ChangedFlags.bPivotLocation = true;
-
-	// 应用推荐吊臂长度
-	if (Result.RecommendedArmLength > 0.0f)
-	{
-		ArmLength = Result.RecommendedArmLength;
-		ChangedFlags.bArmLength = true;
-	}
-
-	// 应用推荐吊臂旋转
-	if (!Result.RecommendedArmRotation.IsNearlyZero())
-	{
-		ArmRotation = Result.RecommendedArmRotation;
-		ArmRotation.Normalize();
-		ChangedFlags.bArmRotation = true;
-	}
-
-	// 额外相机偏移（可选）
-	if (!Result.RecommendedCameraOffset.IsNearlyZero())
-	{
-		CameraLocationOffset = Result.RecommendedCameraOffset;
-		ChangedFlags.bCameraLocationOffset = true;
-	}
-}
-
 // ==================== 便捷设置方法 ====================
 
 void FNamiCameraState::SetPivotLocation(const FVector& InValue)

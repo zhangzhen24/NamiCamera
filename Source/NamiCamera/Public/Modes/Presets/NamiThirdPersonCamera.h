@@ -77,7 +77,7 @@ public:
 	 * 选择"自定义"后可以手动调整所有参数
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "1. 快捷配置",
-		meta = (DisplayName = "相机预设"))
+		meta = (Tooltip = "选择预设配置可以快速设置相机参数。选择自定义后可以手动调整所有参数。"))
 	ENamiThirdPersonCameraPreset CameraPreset = ENamiThirdPersonCameraPreset::Standard;
 	
 	/** 
@@ -86,7 +86,7 @@ public:
 	 * 这是最常用的配置项，直接暴露在顶层方便调整
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "1. 快捷配置", 
-		meta = (DisplayName = "相机距离", ClampMin = "50.0", ClampMax = "2000.0", UIMin = "50.0", UIMax = "2000.0",
+		meta = (ClampMin = "50.0", ClampMax = "2000.0", UIMin = "50.0", UIMax = "2000.0",
 		Tooltip = "相机与角色的距离。推荐值：近距离战斗 150-250，标准第三人称 300-400，远距离探索 500-800"))
 	float CameraDistance = 350.0f;
 	
@@ -95,7 +95,7 @@ public:
 	 * 开启后相机会避免穿透墙壁和障碍物
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "1. 快捷配置",
-		meta = (DisplayName = "启用碰撞检测", Tooltip = "开启后相机会自动避免穿透墙壁和障碍物，建议保持开启"))
+		meta = (Tooltip = "开启后相机会自动避免穿透墙壁和障碍物，建议保持开启"))
 	bool bEnableCollision = true;
 	
 	/**
@@ -103,7 +103,7 @@ public:
 	 * 开启后相机移动会有延迟，让画面更平滑
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "1. 快捷配置",
-		meta = (DisplayName = "启用相机滞后", Tooltip = "开启后相机移动会有延迟效果，让画面更平滑。适合慢节奏游戏"))
+		meta = (Tooltip = "开启后相机移动会有延迟效果，让画面更平滑。适合慢节奏游戏"))
 	bool bEnableCameraLag = false;
 	
 	/**
@@ -111,7 +111,7 @@ public:
 	 * 值越大相机跟随越快，值越小延迟越明显
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "1. 快捷配置",
-		meta = (DisplayName = "相机滞后速度", EditCondition = "bEnableCameraLag", 
+		meta = (EditCondition = "bEnableCameraLag", 
 		ClampMin = "0.0", ClampMax = "100.0", UIMin = "1.0", UIMax = "20.0",
 		Tooltip = "控制相机跟随的速度。推荐值：快速响应 15-20，平衡 8-12，慢速平滑 3-6"))
 	float CameraLagSpeed = 10.0f;
@@ -156,63 +156,65 @@ public:
 	
 	/** 是否限制俯仰角 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 旋转限制",
-		meta = (DisplayName = "限制俯仰角", InlineEditConditionToggle))
+		meta = (InlineEditConditionToggle,
+		Tooltip = "是否限制俯仰角"))
 	bool bLimitPitch = true;
 
 	/** 最小俯仰角（度） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 旋转限制",
-		meta = (DisplayName = "最小俯仰角", EditCondition = "bLimitPitch", 
+		meta = (EditCondition = "bLimitPitch", 
 		ClampMin = "-89.0", ClampMax = "89.0", UIMin = "-89.0", UIMax = "89.0",
 		Tooltip = "相机可以向下看的最大角度，建议范围：-89到0度"))
 	float MinPitch = -60.0f;
 
 	/** 最大俯仰角（度） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 旋转限制",
-		meta = (DisplayName = "最大俯仰角", EditCondition = "bLimitPitch",
+		meta = (EditCondition = "bLimitPitch",
 		ClampMin = "-89.0", ClampMax = "89.0", UIMin = "-89.0", UIMax = "89.0",
 		Tooltip = "相机可以向上看的最大角度，建议范围：0到89度"))
 	float MaxPitch = 30.0f;
 
 	/** 是否限制偏航角 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 旋转限制",
-		meta = (DisplayName = "限制偏航角", InlineEditConditionToggle))
+		meta = (InlineEditConditionToggle,
+		Tooltip = "是否限制偏航角"))
 	bool bLimitYaw = false;
 
 	/** 最小偏航角（度） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 旋转限制",
-		meta = (DisplayName = "最小偏航角", EditCondition = "bLimitYaw", 
+		meta = (EditCondition = "bLimitYaw", 
 		ClampMin = "-180.0", ClampMax = "180.0", UIMin = "-180.0", UIMax = "180.0",
 		Tooltip = "相机可以向左旋转的最大角度"))
 	float MinYaw = -180.0f;
 
 	/** 最大偏航角（度） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 旋转限制",
-		meta = (DisplayName = "最大偏航角", EditCondition = "bLimitYaw",
+		meta = (EditCondition = "bLimitYaw",
 		ClampMin = "-180.0", ClampMax = "180.0", UIMin = "-180.0", UIMax = "180.0",
 		Tooltip = "相机可以向右旋转的最大角度"))
 	float MaxYaw = 180.0f;
 
 	/** 是否锁定Roll旋转 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 旋转限制",
-		meta = (DisplayName = "锁定Roll", Tooltip = "是否将Roll旋转锁定为0度，建议保持开启以避免相机倾斜"))
+		meta = (Tooltip = "是否将Roll旋转锁定为0度，建议保持开启以避免相机倾斜"))
 	bool bLockRoll = true;
 
 	// ========== 输入和行为 ==========
 
 	/** 鼠标灵敏度缩放 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "3. 输入和行为",
-		meta = (DisplayName = "鼠标灵敏度", ClampMin = "0.1", ClampMax = "5.0", UIMin = "0.1", UIMax = "5.0",
+		meta = (ClampMin = "0.1", ClampMax = "5.0", UIMin = "0.1", UIMax = "5.0",
 		Tooltip = "调整鼠标控制相机的灵敏度，值越大相机旋转越快"))
 	float MouseSensitivity = 1.0f;
 
 	/** 是否使用相对旋转（相对于目标） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "3. 输入和行为",
-		meta = (DisplayName = "使用相对旋转", Tooltip = "相机旋转是否相对于目标旋转，建议开启以获得更自然的跟随效果"))
+		meta = (Tooltip = "相机旋转是否相对于目标旋转，建议开启以获得更自然的跟随效果"))
 	bool bUseRelativeRotation = true;
 
 	/** 相机距离缩放因子 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "3. 输入和行为",
-		meta = (DisplayName = "相机距离缩放", ClampMin = "0.5", ClampMax = "2.0", UIMin = "0.5", UIMax = "2.0",
+		meta = (ClampMin = "0.5", ClampMax = "2.0", UIMin = "0.5", UIMax = "2.0",
 		Tooltip = "调整相机与目标的距离，值越大距离越远"))
 	float CameraDistanceScale = 1.0f;
 

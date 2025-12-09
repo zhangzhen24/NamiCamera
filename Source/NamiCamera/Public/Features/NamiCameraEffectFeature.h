@@ -4,19 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "Features/NamiCameraFeature.h"
-#include "Modifiers/NamiCameraEffectModifierBase.h"  // 复用枚举
+#include "Enums/NamiCameraEnums.h"
 #include "NamiCameraEffectFeature.generated.h"
 
 /**
  * 相机效果 Feature 基类
- * 
- * 提供生命周期管理和混合控制，类似 Modifier 系统
- * 用于需要 BlendIn/BlendOut、Duration、输入打断等功能的效果 Feature
- * 
- * 设计目的：
- * - 将 Modifier 的生命周期管理能力引入 Feature 系统
- * - 使 Feature 能够接入阶段二的平滑混合层
- * - 保持与 Modifier 系统的一致性
+ * 提供生命周期管理和混合控制，用于需要 BlendIn/BlendOut、Duration、输入打断等功能的效果 Feature。
  */
 UCLASS(Abstract, Blueprintable, BlueprintType)
 class NAMICAMERA_API UNamiCameraEffectFeature : public UNamiCameraFeature
@@ -100,10 +93,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect|Blending")
 	UCurveFloat* BlendCurve = nullptr;
 
-	/** 结束行为 */
+	/** 结束行为。混合回去：平滑过渡回原状态。立即结束：无过渡直接切回。保持效果：不结束，需手动停止。 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effect|Behavior",
-			  meta = (DisplayName = "结束行为",
-					  Tooltip = "混合回去：平滑过渡回原状态\n立即结束：无过渡直接切回\n保持效果：不结束，需手动停止"))
+			  meta = (Tooltip = "混合回去：平滑过渡回原状态\n立即结束：无过渡直接切回\n保持效果：不结束，需手动停止"))
 	ENamiCameraEndBehavior EndBehavior = ENamiCameraEndBehavior::BlendBack;
 
 

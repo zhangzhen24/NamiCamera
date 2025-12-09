@@ -130,3 +130,65 @@ enum class ENamiCameraInputMode : uint8
 	WithInput UMETA(DisplayName = "有输入"),
 };
 
+/**
+ * 相机效果结束行为
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraEndBehavior : uint8
+{
+	/** 混合回去：平滑过渡回原始状态 */
+	BlendBack UMETA(DisplayName = "混合回去"),
+	
+	/** 立即结束：无过渡，立即切回 */
+	ForceEnd UMETA(DisplayName = "立即结束"),
+	
+	/** 保持效果：不结束，保持当前状态（需手动结束） */
+	Stay UMETA(DisplayName = "保持效果"),
+};
+
+/**
+ * 相机参数更新模式
+ * 定义参数在不同阶段如何更新
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraParamUpdateMode : uint8
+{
+	/** 正常更新：由当前 Feature 控制 */
+	Normal UMETA(DisplayName = "正常更新"),
+	
+	/** 停止更新：参数冻结在当前值 */
+	Frozen UMETA(DisplayName = "停止更新"),
+	
+	/** 维持现状：保持当前值，不混合回基础值 */
+	Preserved UMETA(DisplayName = "维持现状"),
+	
+	/** 玩家输入：由玩家输入控制 */
+	PlayerInput UMETA(DisplayName = "玩家输入"),
+	
+	/** 基础值：使用基础状态的值（来自 Mode） */
+	BaseValue UMETA(DisplayName = "基础值"),
+};
+
+/**
+ * 输入控制状态
+ * 管理当前 Feature 的输入控制模式
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraInputControlState : uint8
+{
+	/** 玩家输入模式：旋转参数由玩家输入控制 */
+	PlayerInput UMETA(DisplayName = "玩家输入"),
+	
+	/** 完全控制模式：CameraAdjust 完全控制所有参数 */
+	FullControl UMETA(DisplayName = "完全控制"),
+	
+	/** 可打断模式：CameraAdjust 控制，但可被玩家输入打断 */
+	Interruptible UMETA(DisplayName = "可打断"),
+	
+	/** 混合模式：CameraAdjust 控制，但玩家输入会衰减权重 */
+	Blended UMETA(DisplayName = "混合"),
+	
+	/** 打断中模式：已触发打断，旋转参数交给玩家 */
+	Interrupted UMETA(DisplayName = "打断中"),
+};
+

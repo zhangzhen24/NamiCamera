@@ -6,6 +6,7 @@
 #include "Structs/Stack/NamiCameraModeStack.h"
 #include "Structs/Mode/NamiCameraModeHandle.h"
 #include "Structs/Mode/NamiCameraModeStackEntry.h"
+#include "Structs/Pipeline/NamiCameraPipelineContext.h"
 #include "Camera/CameraComponent.h"
 #include "Modes/NamiCameraModeBase.h"
 #include "NamiCameraComponent.generated.h"
@@ -19,7 +20,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPopCameraModeDelegate);
 
 /**
  * Nami相机组件
- * 管理相机模式堆栈和混合
+ * 管理相机模式堆栈和混合，提供完整的相机管线处理。
  */
 UCLASS(Blueprintable, BlueprintType, AutoExpandCategories = ("Settings"))
 class NAMICAMERA_API UNamiCameraComponent : public UCameraComponent
@@ -209,6 +210,12 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Nami Camera", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<ANamiPlayerCameraManager> OwnerPlayerCameraManager;
 
+	/** 缓存的 PlayerController（避免每帧查找） */
+	mutable TWeakObjectPtr<APlayerController> CachedPlayerController;
+
+	/** 缓存的 PlayerCameraManager（避免每帧查找） */
+	mutable TWeakObjectPtr<ANamiPlayerCameraManager> CachedPlayerCameraManager;
+
 	/** 通知相机模式初始化 */
 	UFUNCTION()
 	void NotifyCameraModeInitialize(UNamiCameraModeBase *CameraModeInstance);
@@ -221,6 +228,49 @@ protected:
 
 	/** 在指定索引处移除相机模式 */
 	bool PullCameraModeAtIndex(int32 Index);
+
+	// ========== 相机管线处理（重构后的阶段方法） ==========
+
+	/**
+	 * 阶段 0：预处理层
+	 * 检查组件有效性，初始化上下文
+	 */
+	bool PreProcessPipeline(float DeltaTime, FNamiCameraPipelineContext& OutContext);
+
+	/**
+	 * 阶段 1：模式计算层
+	 * 更新模式堆栈，计算并混合所有模式的视图
+	 */
+	bool ProcessModeStack(float DeltaTime, const FNamiCameraPipelineContext& Context, FNamiCameraView& OutBaseView);
+
+	/**
+	 * 阶段 2：全局效果层
+	 * 应用所有全局 Features 到视图
+	 */
+	void ProcessGlobalFeatures(float DeltaTime, FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView);
+
+	/**
+	 * 阶段 3：控制器同步层
+	 * 同步视图的 ControlLocation/Rotation 到 PlayerController
+	 */
+	void ProcessControllerSync(float DeltaTime, const FNamiCameraPipelineContext& Context, const FNamiCameraView& InView);
+
+	/**
+	 * 阶段 4：平滑混合层
+	 * 从当前位置平滑过渡到目标位置
+	 */
+	void ProcessSmoothing(float DeltaTime, const FNamiCameraView& InView, FMinimalViewInfo& OutPOV);
+
+	/**
+	 * 阶段 5：后处理层
+	 * Debug 绘制、日志输出、组件同步
+	 */
+	void PostProcessPipeline(float DeltaTime, const FNamiCameraPipelineContext& Context, FMinimalViewInfo& InOutPOV);
+
+	/**
+	 * 应用参数更新控制到视图
+	 */
+	void ApplyParamUpdateControl(const FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView);
 
 	// ========== 平滑混合层 ==========
 

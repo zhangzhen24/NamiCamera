@@ -8,6 +8,7 @@
 #include "Modes/Templates/NamiFollowCameraMode.h"
 #include "Components/NamiPlayerCameraManager.h"
 #include "Structs/View/NamiCameraView.h"
+#include "Structs/Pipeline/NamiCameraPipelineContext.h"
 #include "Settings/NamiCameraSettings.h"
 #include "Features/NamiCameraFeature.h"
 #include "GameplayTagContainer.h"
@@ -69,6 +70,11 @@ void UNamiCameraComponent::BeginPlay()
 	OwnerPawn = Cast<APawn>(GetOwner());
 	OwnerPlayerController = OwnerPawn ? Cast<APlayerController>(OwnerPawn->GetController()) : nullptr;
 	OwnerPlayerCameraManager = OwnerPlayerController ? Cast<ANamiPlayerCameraManager>(OwnerPlayerController->PlayerCameraManager) : nullptr;
+	
+	// 初始化缓存
+	CachedPlayerController = OwnerPlayerController;
+	CachedPlayerCameraManager = OwnerPlayerCameraManager;
+	
 	if (!OwnerPlayerCameraManager)
 	{
 		return;
@@ -92,168 +98,41 @@ void UNamiCameraComponent::BeginPlay()
 
 void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &DesiredView)
 {
-	// ========== 【阶段一：目标视图计算层】 ==========
-	// 计算"应该在哪里"（通过 Mode + Modifier）
-
-	FNamiCameraView CameraModeView;
-	// 评估BlendingStack 的堆栈权重
-	if (!BlendingStack.EvaluateStack(DeltaTime, CameraModeView))
+	// ========== 【阶段 0：预处理层】 ==========
+	FNamiCameraPipelineContext Context;
+	if (!PreProcessPipeline(DeltaTime, Context))
 	{
 		Super::GetCameraView(DeltaTime, DesiredView);
 		return;
 	}
 
-	// 应用全局 Feature（在所有 Mode Feature 之后）
-	for (UNamiCameraFeature* Feature : GlobalFeatures)
+	// ========== 【阶段 1：模式计算层】 ==========
+	FNamiCameraView BaseView;
+	if (!ProcessModeStack(DeltaTime, Context, BaseView))
 	{
-		if (IsValid(Feature) && Feature->IsEnabled())
-		{
-			Feature->Update(DeltaTime);
-			Feature->ApplyToView(CameraModeView, DeltaTime);
-		}
+		Super::GetCameraView(DeltaTime, DesiredView);
+		return;
 	}
 
-	DrawDebugCameraInfo(CameraModeView);
+	// ========== 【阶段 2：全局效果层】 ==========
+	FNamiCameraView EffectView = BaseView;
+	ProcessGlobalFeatures(DeltaTime, Context, EffectView);
+	
+	// 保存 EffectView 用于 Debug（阶段5需要）
+	Context.EffectView = EffectView;
 
-	// PlayerController
-	if (APlayerController *PC = GetOwnerPlayerController())
-	{
-		const FVector DesiredCtrlLoc = CameraModeView.ControlLocation;
-		const FRotator DesiredCtrlRot = CameraModeView.ControlRotation;
-		if (!bHasInitializedControl)
-		{
-			CurrentControlLocation = DesiredCtrlLoc;
-			CurrentControlRotation = DesiredCtrlRot;
-			bHasInitializedControl = true;
-		}
-		else
-		{
-			if (ControlLocationBlendSpeed > 0.0f)
-			{
-				CurrentControlLocation = FMath::VInterpTo(CurrentControlLocation, DesiredCtrlLoc, DeltaTime, ControlLocationBlendSpeed);
-			}
-			else
-			{
-				CurrentControlLocation = DesiredCtrlLoc;
-			}
-			if (ControlRotationBlendSpeed > 0.0f)
-			{
-				CurrentControlRotation = FMath::RInterpTo(CurrentControlRotation, DesiredCtrlRot, DeltaTime, ControlRotationBlendSpeed);
-			}
-			else
-			{
-				CurrentControlRotation = DesiredCtrlRot;
-			}
-		}
+	// ========== 【阶段 3：控制器同步层】 ==========
+	ProcessControllerSync(DeltaTime, Context, EffectView);
 
-		FHitResult HitResult;
-		PC->K2_SetActorLocation(CurrentControlLocation, false, HitResult, true);
-		PC->SetControlRotation(CurrentControlRotation);
-	}
+	// ========== 【阶段 4：平滑混合层】 ==========
+	FMinimalViewInfo SmoothedPOV;
+	ProcessSmoothing(DeltaTime, EffectView, SmoothedPOV);
 
-	// 构建目标 POV（Mode 层计算的结果）
-	FMinimalViewInfo TargetPOV;
-	TargetPOV.Location = CameraModeView.CameraLocation;
-	TargetPOV.Rotation = CameraModeView.CameraRotation;
-	TargetPOV.FOV = CameraModeView.FOV;
-	TargetPOV.OrthoWidth = OrthoWidth;
-	TargetPOV.OrthoNearClipPlane = OrthoNearClipPlane;
-	TargetPOV.OrthoFarClipPlane = OrthoFarClipPlane;
-	TargetPOV.AspectRatio = AspectRatio;
-	TargetPOV.bConstrainAspectRatio = bConstrainAspectRatio;
-	TargetPOV.bUseFieldOfViewForLOD = bUseFieldOfViewForLOD;
-	TargetPOV.ProjectionMode = ProjectionMode;
-	TargetPOV.PostProcessBlendWeight = PostProcessBlendWeight;
-	if (PostProcessBlendWeight > 0.0f)
-	{
-		TargetPOV.PostProcessSettings = PostProcessSettings;
-	}
+	// ========== 【阶段 5：后处理层】 ==========
+	PostProcessPipeline(DeltaTime, Context, SmoothedPOV);
 
-
-	// ========== 【阶段二：平滑混合层】 ==========
-	// 从当前位置平滑过渡到目标位置，解决瞬切问题
-
-	// 初始化检查（首次调用时）
-	if (!bHasInitializedCurrentView)
-	{
-		CurrentActualView = TargetPOV;
-		bHasInitializedCurrentView = true;
-	}
-
-	// 位置平滑混合
-	FVector BeforeLoc = CurrentActualView.Location;
-	FRotator BeforeRot = CurrentActualView.Rotation;
-	float BeforeFOV = CurrentActualView.FOV;
-	if (LocationBlendSpeed > 0.0f)
-	{
-		CurrentActualView.Location = FMath::VInterpTo(
-			CurrentActualView.Location, // 当前位置 A
-			TargetPOV.Location,			// 目标位置 B
-			DeltaTime,
-			LocationBlendSpeed);
-	}
-	else
-	{
-		CurrentActualView.Location = TargetPOV.Location; // 瞬切
-	}
-
-	// 旋转平滑混合（球面插值）
-	if (RotationBlendSpeed > 0.0f)
-	{
-		CurrentActualView.Rotation = FMath::RInterpTo(
-			CurrentActualView.Rotation, // 当前旋转 A
-			TargetPOV.Rotation,			// 目标旋转 B
-			DeltaTime,
-			RotationBlendSpeed);
-	}
-	else
-	{
-		CurrentActualView.Rotation = TargetPOV.Rotation; // 瞬切
-	}
-
-	// FOV 平滑混合
-	if (FOVBlendSpeed > 0.0f)
-	{
-		CurrentActualView.FOV = FMath::FInterpTo(
-			CurrentActualView.FOV, // 当前 FOV A
-			TargetPOV.FOV,		   // 目标 FOV B
-			DeltaTime,
-			FOVBlendSpeed);
-	}
-	else
-	{
-		CurrentActualView.FOV = TargetPOV.FOV; // 瞬切
-	}
-
-	// 同步其他属性（不需要平滑的属性）
-	CurrentActualView.OrthoWidth = TargetPOV.OrthoWidth;
-	CurrentActualView.OrthoNearClipPlane = TargetPOV.OrthoNearClipPlane;
-	CurrentActualView.OrthoFarClipPlane = TargetPOV.OrthoFarClipPlane;
-	CurrentActualView.AspectRatio = TargetPOV.AspectRatio;
-	CurrentActualView.bConstrainAspectRatio = TargetPOV.bConstrainAspectRatio;
-	CurrentActualView.bUseFieldOfViewForLOD = TargetPOV.bUseFieldOfViewForLOD;
-	CurrentActualView.ProjectionMode = TargetPOV.ProjectionMode;
-	CurrentActualView.PostProcessBlendWeight = TargetPOV.PostProcessBlendWeight;
-	CurrentActualView.PostProcessSettings = TargetPOV.PostProcessSettings;
-
-	// ========== 【阶段三：最终输出】 ==========
-
-	// 输出最终视图
-	DesiredView = CurrentActualView;
-
-	// 同步到组件
-	SetWorldLocationAndRotation(CurrentActualView.Location, CurrentActualView.Rotation);
-	FieldOfView = CurrentActualView.FOV;
-
-	// Debug日志（如果启用）
-	if (UNamiCameraSettings::ShouldEnableStackDebugLog())
-	{
-		const UNamiCameraSettings *Settings = UNamiCameraSettings::Get();
-		if (Settings)
-		{
-			BlendingStack.DumpCameraModeStack(true, false, Settings->DebugLogTextColor, Settings->DebugLogDuration);
-		}
-	}
+	// ========== 【最终输出】 ==========
+	DesiredView = SmoothedPOV;
 }
 
 APawn *UNamiCameraComponent::GetOwnerPawn() const
@@ -263,12 +142,46 @@ APawn *UNamiCameraComponent::GetOwnerPawn() const
 
 APlayerController *UNamiCameraComponent::GetOwnerPlayerController() const
 {
-	return OwnerPlayerController.Get();
+	// 如果缓存有效，直接返回
+	if (CachedPlayerController.IsValid())
+	{
+		return CachedPlayerController.Get();
+	}
+
+	// 否则从 Owner 获取并缓存
+	if (IsValid(OwnerPawn))
+	{
+		APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController());
+		if (PC)
+		{
+			CachedPlayerController = PC;
+			return PC;
+		}
+	}
+
+	return nullptr;
 }
 
 ANamiPlayerCameraManager *UNamiCameraComponent::GetOwnerPlayerCameraManager() const
 {
-	return OwnerPlayerCameraManager.Get();
+	// 如果缓存有效，直接返回
+	if (CachedPlayerCameraManager.IsValid())
+	{
+		return CachedPlayerCameraManager.Get();
+	}
+
+	// 否则从 PlayerController 获取并缓存
+	if (APlayerController* PC = GetOwnerPlayerController())
+	{
+		ANamiPlayerCameraManager* Manager = Cast<ANamiPlayerCameraManager>(PC->PlayerCameraManager);
+		if (Manager)
+		{
+			CachedPlayerCameraManager = Manager;
+			return Manager;
+		}
+	}
+
+	return nullptr;
 }
 
 void UNamiCameraComponent::DumpCameraModeStack(const bool bPrintToScreen, const bool bPrintToLog,
@@ -798,4 +711,338 @@ void UNamiCameraComponent::DrawDebugCameraInfo(const FNamiCameraView& View) cons
 		DebugInfo.FromView(View);
 		NAMI_LOG_CAMERA_INFO(Log, TEXT("%s"), *DebugInfo.ToString());
 	}
+}
+
+// ========== 相机管线处理（重构后的阶段方法） ==========
+
+bool UNamiCameraComponent::PreProcessPipeline(float DeltaTime, FNamiCameraPipelineContext& OutContext)
+{
+	// 重置上下文
+	OutContext.Reset();
+	OutContext.DeltaTime = DeltaTime;
+
+	// 1. 检查基础组件
+	OutContext.OwnerPawn = GetOwnerPawn();
+	OutContext.OwnerPC = GetOwnerPlayerController();
+	OutContext.CameraManager = GetOwnerPlayerCameraManager();
+
+	// 2. 验证有效性
+	if (!OutContext.OwnerPawn || !OutContext.OwnerPC || !OutContext.CameraManager)
+	{
+		OutContext.bIsValid = false;
+		return false;
+	}
+
+	// 3. 检查模式堆栈
+	if (CameraModePriorityStack.Num() == 0)
+	{
+		OutContext.bIsValid = false;
+		return false;
+	}
+
+	OutContext.bIsValid = true;
+	return true;
+}
+
+bool UNamiCameraComponent::ProcessModeStack(float DeltaTime, const FNamiCameraPipelineContext& Context, FNamiCameraView& OutBaseView)
+{
+	// 评估 BlendingStack 的堆栈权重
+	// EvaluateStack 内部会：
+	// 1. UpdateStack() - Tick 所有激活模式，更新混合权重
+	// 2. BlendStack() - 混合所有模式的视图
+	return BlendingStack.EvaluateStack(DeltaTime, OutBaseView);
+}
+
+void UNamiCameraComponent::ProcessGlobalFeatures(float DeltaTime, FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView)
+{
+	// 1. 收集基础状态（来自 Mode Stack）
+	FNamiCameraState BaseState;
+	BaseState.PivotLocation = InOutView.PivotLocation;
+	BaseState.PivotRotation = InOutView.ControlRotation;
+	BaseState.CameraLocation = InOutView.CameraLocation;
+	BaseState.CameraRotation = InOutView.CameraRotation;
+	BaseState.FieldOfView = InOutView.FOV;
+	// 其他参数使用默认值或从视图反推（简化实现）
+	BaseState.ComputeOutput();
+	Context.BaseState = BaseState;
+	Context.bHasBaseState = true;
+
+	// 2. 收集玩家输入状态（如果有 Input Feature）
+	// TODO: 从 Input Feature 获取玩家输入状态
+	// 暂时使用 ControlRotation 作为玩家输入
+	FNamiCameraState PlayerInputState;
+	PlayerInputState.PivotRotation = InOutView.ControlRotation;
+	Context.PlayerInputState = PlayerInputState;
+	Context.bHasPlayerInputState = true;
+
+	// 3. 更新玩家输入信息
+	// TODO: 从 Input Feature 获取实际输入向量
+	// 暂时使用 ControlRotation 的变化来检测输入
+	Context.PlayerInput.Update(FVector2D::ZeroVector); // 简化实现
+
+	// 4. 保存 EffectView（用于 Feature 访问）
+	Context.EffectView = InOutView;
+
+	// 5. 应用全局 Feature（使用新接口）
+	for (UNamiCameraFeature* Feature : GlobalFeatures)
+	{
+		if (!Feature || !Feature->IsEnabled())
+		{
+			continue;
+		}
+
+		Feature->Update(DeltaTime);
+		
+		// 调用新接口（带 Context）
+		Feature->ApplyToViewWithContext(InOutView, DeltaTime, Context);
+	}
+
+	// 6. 应用参数更新控制到最终视图
+	ApplyParamUpdateControl(Context, InOutView);
+
+	// 7. 更新 EffectView
+	Context.EffectView = InOutView;
+}
+
+void UNamiCameraComponent::ApplyParamUpdateControl(const FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView)
+{
+	// 应用参数更新控制到视图
+	// 根据 Context.ParamUpdateControl 的模式，修改视图参数
+
+	// 旋转参数
+	if (Context.ParamUpdateControl.PivotRotation == ENamiCameraParamUpdateMode::PlayerInput)
+	{
+		// 使用玩家输入
+		if (Context.bHasPlayerInputState)
+		{
+			InOutView.ControlRotation = Context.PlayerInputState.PivotRotation;
+		}
+	}
+	else if (Context.ParamUpdateControl.PivotRotation == ENamiCameraParamUpdateMode::Frozen)
+	{
+		// 冻结：使用保存的值
+		if (Context.bHasPreservedValues)
+		{
+			InOutView.ControlRotation = Context.PreservedValues.PivotRotation;
+		}
+	}
+	else if (Context.ParamUpdateControl.PivotRotation == ENamiCameraParamUpdateMode::BaseValue)
+	{
+		// 基础值：使用基础状态
+		if (Context.bHasBaseState)
+		{
+			InOutView.ControlRotation = Context.BaseState.PivotRotation;
+		}
+	}
+
+	// 相机旋转
+	if (Context.ParamUpdateControl.CameraRotation == ENamiCameraParamUpdateMode::PlayerInput)
+	{
+		// 使用玩家输入
+		if (Context.bHasPlayerInputState)
+		{
+			InOutView.CameraRotation = Context.PlayerInputState.CameraRotation;
+		}
+	}
+	else if (Context.ParamUpdateControl.CameraRotation == ENamiCameraParamUpdateMode::Frozen)
+	{
+		// 冻结：使用保存的值
+		if (Context.bHasPreservedValues)
+		{
+			InOutView.CameraRotation = Context.PreservedValues.CameraRotation;
+		}
+	}
+	else if (Context.ParamUpdateControl.CameraRotation == ENamiCameraParamUpdateMode::BaseValue)
+	{
+		// 基础值：使用基础状态
+		if (Context.bHasBaseState)
+		{
+			InOutView.CameraRotation = Context.BaseState.CameraRotation;
+		}
+	}
+
+	// 位置参数
+	if (Context.ParamUpdateControl.PivotLocation == ENamiCameraParamUpdateMode::BaseValue)
+	{
+		if (Context.bHasBaseState)
+		{
+			InOutView.PivotLocation = Context.BaseState.PivotLocation;
+		}
+	}
+
+	if (Context.ParamUpdateControl.CameraLocation == ENamiCameraParamUpdateMode::BaseValue)
+	{
+		if (Context.bHasBaseState)
+		{
+			InOutView.CameraLocation = Context.BaseState.CameraLocation;
+		}
+	}
+
+	// FOV
+	if (Context.ParamUpdateControl.FieldOfView == ENamiCameraParamUpdateMode::BaseValue)
+	{
+		if (Context.bHasBaseState)
+		{
+			InOutView.FOV = Context.BaseState.FieldOfView;
+		}
+	}
+}
+
+void UNamiCameraComponent::ProcessControllerSync(float DeltaTime, const FNamiCameraPipelineContext& Context, const FNamiCameraView& InView)
+{
+	APlayerController* PC = Context.OwnerPC;
+	if (!PC)
+	{
+		return;
+	}
+
+	const FVector DesiredCtrlLoc = InView.ControlLocation;
+	const FRotator DesiredCtrlRot = InView.ControlRotation;
+
+	// 初始化检查
+	if (!bHasInitializedControl)
+	{
+		CurrentControlLocation = DesiredCtrlLoc;
+		CurrentControlRotation = DesiredCtrlRot;
+		bHasInitializedControl = true;
+	}
+	else
+	{
+		// 位置平滑混合
+		if (ControlLocationBlendSpeed > 0.0f)
+		{
+			CurrentControlLocation = FMath::VInterpTo(
+				CurrentControlLocation,
+				DesiredCtrlLoc,
+				DeltaTime,
+				ControlLocationBlendSpeed);
+		}
+		else
+		{
+			CurrentControlLocation = DesiredCtrlLoc;
+		}
+
+		// 旋转平滑混合
+		if (ControlRotationBlendSpeed > 0.0f)
+		{
+			CurrentControlRotation = FMath::RInterpTo(
+				CurrentControlRotation,
+				DesiredCtrlRot,
+				DeltaTime,
+				ControlRotationBlendSpeed);
+		}
+		else
+		{
+			CurrentControlRotation = DesiredCtrlRot;
+		}
+	}
+
+	// 更新 PlayerController
+	FHitResult HitResult;
+	PC->K2_SetActorLocation(CurrentControlLocation, false, HitResult, true);
+	PC->SetControlRotation(CurrentControlRotation);
+}
+
+void UNamiCameraComponent::ProcessSmoothing(float DeltaTime, const FNamiCameraView& InView, FMinimalViewInfo& OutPOV)
+{
+	// 构建目标 POV（Mode 层计算的结果）
+	FMinimalViewInfo TargetPOV;
+	TargetPOV.Location = InView.CameraLocation;
+	TargetPOV.Rotation = InView.CameraRotation;
+	TargetPOV.FOV = InView.FOV;
+	TargetPOV.OrthoWidth = OrthoWidth;
+	TargetPOV.OrthoNearClipPlane = OrthoNearClipPlane;
+	TargetPOV.OrthoFarClipPlane = OrthoFarClipPlane;
+	TargetPOV.AspectRatio = AspectRatio;
+	TargetPOV.bConstrainAspectRatio = bConstrainAspectRatio;
+	TargetPOV.bUseFieldOfViewForLOD = bUseFieldOfViewForLOD;
+	TargetPOV.ProjectionMode = ProjectionMode;
+	TargetPOV.PostProcessBlendWeight = PostProcessBlendWeight;
+	if (PostProcessBlendWeight > 0.0f)
+	{
+		TargetPOV.PostProcessSettings = PostProcessSettings;
+	}
+
+	// 初始化检查（首次调用时）
+	if (!bHasInitializedCurrentView)
+	{
+		CurrentActualView = TargetPOV;
+		bHasInitializedCurrentView = true;
+	}
+
+	// 位置平滑混合
+	if (LocationBlendSpeed > 0.0f)
+	{
+		CurrentActualView.Location = FMath::VInterpTo(
+			CurrentActualView.Location,
+			TargetPOV.Location,
+			DeltaTime,
+			LocationBlendSpeed);
+	}
+	else
+	{
+		CurrentActualView.Location = TargetPOV.Location; // 瞬切
+	}
+
+	// 旋转平滑混合（球面插值）
+	if (RotationBlendSpeed > 0.0f)
+	{
+		CurrentActualView.Rotation = FMath::RInterpTo(
+			CurrentActualView.Rotation,
+			TargetPOV.Rotation,
+			DeltaTime,
+			RotationBlendSpeed);
+	}
+	else
+	{
+		CurrentActualView.Rotation = TargetPOV.Rotation; // 瞬切
+	}
+
+	// FOV 平滑混合
+	if (FOVBlendSpeed > 0.0f)
+	{
+		CurrentActualView.FOV = FMath::FInterpTo(
+			CurrentActualView.FOV,
+			TargetPOV.FOV,
+			DeltaTime,
+			FOVBlendSpeed);
+	}
+	else
+	{
+		CurrentActualView.FOV = TargetPOV.FOV; // 瞬切
+	}
+
+	// 同步其他属性（不需要平滑的属性）
+	CurrentActualView.OrthoWidth = TargetPOV.OrthoWidth;
+	CurrentActualView.OrthoNearClipPlane = TargetPOV.OrthoNearClipPlane;
+	CurrentActualView.OrthoFarClipPlane = TargetPOV.OrthoFarClipPlane;
+	CurrentActualView.AspectRatio = TargetPOV.AspectRatio;
+	CurrentActualView.bConstrainAspectRatio = TargetPOV.bConstrainAspectRatio;
+	CurrentActualView.bUseFieldOfViewForLOD = TargetPOV.bUseFieldOfViewForLOD;
+	CurrentActualView.ProjectionMode = TargetPOV.ProjectionMode;
+	CurrentActualView.PostProcessBlendWeight = TargetPOV.PostProcessBlendWeight;
+	CurrentActualView.PostProcessSettings = TargetPOV.PostProcessSettings;
+
+	// 输出
+	OutPOV = CurrentActualView;
+}
+
+void UNamiCameraComponent::PostProcessPipeline(float DeltaTime, const FNamiCameraPipelineContext& Context, FMinimalViewInfo& InOutPOV)
+{
+	// 5.1 Debug 绘制（使用阶段2的 EffectView）
+	DrawDebugCameraInfo(Context.EffectView);
+
+	// 5.2 Debug 日志（如果启用）
+	if (UNamiCameraSettings::ShouldEnableStackDebugLog())
+	{
+		const UNamiCameraSettings* Settings = UNamiCameraSettings::Get();
+		if (Settings)
+		{
+			BlendingStack.DumpCameraModeStack(true, false, Settings->DebugLogTextColor, Settings->DebugLogDuration);
+		}
+	}
+
+	// 5.3 同步到组件
+	SetWorldLocationAndRotation(InOutPOV.Location, InOutPOV.Rotation);
+	FieldOfView = InOutPOV.FOV;
 }

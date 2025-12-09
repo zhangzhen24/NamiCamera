@@ -43,17 +43,18 @@ public:
 
 	/** SpringArm配置（弹簧臂） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpringArm", 
-		meta = (ShowInnerProperties, DisplayName = "SpringArm配置"))
+		meta = (ShowInnerProperties, Tooltip = "SpringArm配置（弹簧臂）"))
 	FNamiSpringArm SpringArm;
 
 	/** 是否自动从相机模式获取目标Actor（用于忽略碰撞） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpringArm",
-		meta = (DisplayName = "自动获取目标"))
+		meta = (Tooltip = "是否自动从相机模式获取目标Actor（用于忽略碰撞）"))
 	bool bAutoGetTarget = true;
 
 	/** 手动指定的忽略Actor列表（如果bAutoGetTarget为false时使用） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SpringArm",
-		meta = (DisplayName = "忽略的Actor", EditCondition = "!bAutoGetTarget"))
+		meta = (EditCondition = "!bAutoGetTarget",
+				Tooltip = "手动指定的忽略Actor列表（如果bAutoGetTarget为false时使用）"))
 	TArray<TObjectPtr<AActor>> IgnoreActors;
 
 protected:

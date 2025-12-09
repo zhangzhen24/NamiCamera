@@ -2,6 +2,7 @@
 
 #include "Features/NamiCameraFeature.h"
 #include "Modes/NamiCameraModeBase.h"
+#include "Structs/Pipeline/NamiCameraPipelineContext.h"
 
 UNamiCameraFeature::UNamiCameraFeature()
 	: Priority(0)
@@ -28,6 +29,15 @@ void UNamiCameraFeature::Update_Implementation(float DeltaTime)
 
 void UNamiCameraFeature::ApplyToView_Implementation(FNamiCameraView& InOutView, float DeltaTime)
 {
+}
+
+void UNamiCameraFeature::ApplyToViewWithContext_Implementation(
+	FNamiCameraView& InOutView, 
+	float DeltaTime,
+	FNamiCameraPipelineContext& Context)
+{
+	// 默认实现：调用 ApplyToView（向后兼容）
+	ApplyToView(InOutView, DeltaTime);
 }
 
 UWorld* UNamiCameraFeature::GetWorld() const

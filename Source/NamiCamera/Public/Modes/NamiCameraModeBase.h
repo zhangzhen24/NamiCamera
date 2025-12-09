@@ -235,6 +235,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Camera Mode|Features")
 	TArray<TObjectPtr<UNamiCameraFeature>> Features;
 
+	/** Feature 查找 Map（优化查找性能，按 FeatureName 索引） */
+	mutable TMap<FName, UNamiCameraFeature*> FeatureMap;
+
+	/** 是否需要重新构建 FeatureMap */
+	mutable bool bFeatureMapDirty = true;
+
+	/** 重建 FeatureMap（延迟构建，只在需要时重建） */
+	void RebuildFeatureMap() const;
+
 	/** 当前视图 */
 	FNamiCameraView CurrentView;
 

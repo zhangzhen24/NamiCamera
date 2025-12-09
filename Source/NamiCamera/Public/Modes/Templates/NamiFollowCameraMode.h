@@ -156,37 +156,39 @@ public:
 
 	/** 视点偏移（PivotLocation偏移，相对于目标位置） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "视点偏移"))
+			  meta = (Tooltip = "视点偏移（PivotLocation偏移，相对于目标位置）"))
 	FVector PivotLocationOffset = FVector::ZeroVector;
 
 	/** 是否使用控制器旋转（ControlRotation）来计算视点偏移方向 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "视点偏移使用控制器旋转"))
+			  meta = (Tooltip = "是否使用控制器旋转（ControlRotation）来计算视点偏移方向"))
 	bool bPivotOffsetUseTargetRotation = true;
 
 	/** 视点偏移是否只使用Yaw旋转（忽略Pitch和Roll） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "视点偏移只用Yaw", EditCondition = "bPivotOffsetUseTargetRotation"))
+			  meta = (EditCondition = "bPivotOffsetUseTargetRotation",
+					  Tooltip = "视点偏移是否只使用Yaw旋转（忽略Pitch和Roll）"))
 	bool bPivotOffsetUseYawOnly = true;
 
 	/** 相机偏移（相对于 PivotLocation） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "相机偏移"))
+			  meta = (Tooltip = "相机偏移（相对于 PivotLocation）"))
 	FVector CameraOffset = FVector(-300.0f, 0.0f, 100.0f);
 
 	/** 是否使用主目标的旋转来计算偏移方向 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "使用目标旋转"))
+			  meta = (Tooltip = "是否使用主目标的旋转来计算偏移方向"))
 	bool bUseTargetRotation = true;
 
 	/** 是否只使用Yaw旋转（忽略Pitch和Roll） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "只用Yaw", EditCondition = "bUseTargetRotation"))
+			  meta = (EditCondition = "bUseTargetRotation",
+					  Tooltip = "是否只使用Yaw旋转（忽略Pitch和Roll）"))
 	bool bUseYawOnly = true;
 
 	/** 枢轴点额外高度偏移（向后兼容，建议使用PivotLocationOffset.Z代替） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (DisplayName = "枢轴点高度偏移", Tooltip = "向后兼容属性，建议使用PivotLocationOffset.Z代替。如果PivotLocationOffset.Z为0或很小，此值会被应用。"))
+			  meta = (Tooltip = "向后兼容属性，建议使用PivotLocationOffset.Z代替。如果PivotLocationOffset.Z为0或很小，此值会被应用。"))
 	float PivotHeightOffset = 0.0f;
 
 	/**
@@ -195,18 +197,19 @@ public:
 	 * 如果启用，相机会根据平滑时间参数平滑跟随目标
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (DisplayName = "启用平滑", InlineEditConditionToggle))
+			  meta = (InlineEditConditionToggle,
+					  Tooltip = "是否启用平滑。如果禁用，相机将立即跟随目标，无延迟。如果启用，相机会根据平滑时间参数平滑跟随目标。"))
 	bool bEnableSmoothing = true;
 
 	/** 是否启用相机位置平滑 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (DisplayName = "启用相机位置平滑", EditCondition = "bEnableSmoothing",
+			  meta = (EditCondition = "bEnableSmoothing",
 					  Tooltip = "是否启用相机位置的平滑移动"))
 	bool bEnableCameraLocationSmoothing = true;
 
 	/** 是否启用相机旋转平滑 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (DisplayName = "启用相机旋转平滑", EditCondition = "bEnableSmoothing",
+			  meta = (EditCondition = "bEnableSmoothing",
 					  Tooltip = "是否启用相机旋转的平滑过渡"))
 	bool bEnableCameraRotationSmoothing = true;
 
@@ -219,7 +222,7 @@ public:
 	 * - 值越大：相机移动越慢，但更平滑
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (DisplayName = "相机位置平滑强度", ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
+			  meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
 					  Tooltip = "控制相机位置移动的平滑程度。配置范围0.0-1.0，实际映射到0.0-2.0的平滑时间。值越小移动越快，值越大越平滑。"))
 	float CameraLocationSmoothIntensity = 0.0f;
 
@@ -232,7 +235,7 @@ public:
 	 * - 值越大：旋转越慢，但更平滑
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (DisplayName = "相机旋转平滑强度", ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
+			  meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
 					  Tooltip = "控制相机旋转的平滑程度。配置范围0.0-1.0，实际映射到0.0-2.0的平滑时间。值越小旋转越快，值越大越平滑。"))
 	float CameraRotationSmoothIntensity = 0.0f;
 
@@ -240,36 +243,36 @@ public:
 
 	/** 是否启用动态FOV */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Dynamic FOV",
-			  meta = (DisplayName = "启用动态FOV", Tooltip = "是否根据角色速度或其他因素动态调整FOV"))
+			  meta = (Tooltip = "是否根据角色速度或其他因素动态调整FOV"))
 	bool bEnableDynamicFOV = false;
 
 	/** 基础FOV值 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Dynamic FOV",
-			  meta = (DisplayName = "基础FOV", EditCondition = "bEnableDynamicFOV", ClampMin = "30.0", ClampMax = "120.0",
+			  meta = (EditCondition = "bEnableDynamicFOV", ClampMin = "30.0", ClampMax = "120.0",
 					  Tooltip = "相机的基础视野角度"))
 	float BaseFOV = 90.0f;
 
 	/** 最小FOV值 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Dynamic FOV",
-			  meta = (DisplayName = "最小FOV", EditCondition = "bEnableDynamicFOV", ClampMin = "30.0", ClampMax = "120.0",
+			  meta = (EditCondition = "bEnableDynamicFOV", ClampMin = "30.0", ClampMax = "120.0",
 					  Tooltip = "动态FOV的最小允许值"))
 	float MinDynamicFOV = 60.0f;
 
 	/** 最大FOV值 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Dynamic FOV",
-			  meta = (DisplayName = "最大FOV", EditCondition = "bEnableDynamicFOV", ClampMin = "30.0", ClampMax = "120.0",
+			  meta = (EditCondition = "bEnableDynamicFOV", ClampMin = "30.0", ClampMax = "120.0",
 					  Tooltip = "动态FOV的最大允许值"))
 	float MaxDynamicFOV = 110.0f;
 
 	/** FOV变化速率（每秒） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Dynamic FOV",
-			  meta = (DisplayName = "FOV变化速率", EditCondition = "bEnableDynamicFOV", ClampMin = "0.0", ClampMax = "100.0",
+			  meta = (EditCondition = "bEnableDynamicFOV", ClampMin = "0.0", ClampMax = "100.0",
 					  Tooltip = "FOV每秒变化的最大速率，用于平滑过渡FOV变化"))
 	float DynamicFOVChangeRate = 20.0f;
 
 	/** 速度影响FOV的系数 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Dynamic FOV",
-			  meta = (DisplayName = "速度影响系数", EditCondition = "bEnableDynamicFOV", ClampMin = "0.0", ClampMax = "10.0",
+			  meta = (EditCondition = "bEnableDynamicFOV", ClampMin = "0.0", ClampMax = "10.0",
 					  Tooltip = "角色速度对FOV的影响程度，值越大FOV随速度变化越明显"))
 	float SpeedFOVFactor = 1.0f;
 

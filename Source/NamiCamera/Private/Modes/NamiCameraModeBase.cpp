@@ -169,6 +169,9 @@ void UNamiCameraModeBase::AddFeature(UNamiCameraFeature* Feature)
 	}
 
 	SortFeatures();
+	
+	// 标记 FeatureMap 需要重建
+	bFeatureMapDirty = true;
 }
 
 void UNamiCameraModeBase::RemoveFeature(UNamiCameraFeature* Feature)
@@ -188,19 +191,42 @@ void UNamiCameraModeBase::RemoveFeature(UNamiCameraFeature* Feature)
 		}
 
 		Features.RemoveAt(Index);
+		
+		// 标记 FeatureMap 需要重建
+		bFeatureMapDirty = true;
 	}
 }
 
 UNamiCameraFeature* UNamiCameraModeBase::GetFeatureByName(FName FeatureName) const
 {
+	// 如果 FeatureMap 需要重建，先重建
+	if (bFeatureMapDirty)
+	{
+		RebuildFeatureMap();
+	}
+
+	// 从 Map 中查找（O(1) 时间复杂度）
+	if (UNamiCameraFeature** FoundFeature = FeatureMap.Find(FeatureName))
+	{
+		return *FoundFeature;
+	}
+
+	return nullptr;
+}
+
+void UNamiCameraModeBase::RebuildFeatureMap() const
+{
+	FeatureMap.Empty();
+	
 	for (UNamiCameraFeature* Feature : Features)
 	{
-		if (IsValid(Feature) && Feature->FeatureName == FeatureName)
+		if (IsValid(Feature) && Feature->FeatureName != NAME_None)
 		{
-			return Feature;
+			FeatureMap.Add(Feature->FeatureName, Feature);
 		}
 	}
-	return nullptr;
+	
+	bFeatureMapDirty = false;
 }
 
 UWorld* UNamiCameraModeBase::GetWorld() const
@@ -225,23 +251,41 @@ void UNamiCameraModeBase::SetBlendWeight(float InWeight)
 
 void UNamiCameraModeBase::ApplyFeaturesToView(FNamiCameraView& InOutView, float DeltaTime)
 {
+	// 优化：只遍历有效的 Feature，减少无效检查
 	for (UNamiCameraFeature* Feature : Features)
 	{
-		if (IsValid(Feature) && Feature->IsEnabled())
+		if (!Feature)
 		{
-			Feature->ApplyToView(InOutView, DeltaTime);
+			continue;
 		}
+
+		// 快速路径：如果 Feature 未启用，跳过 ApplyToView
+		if (!Feature->IsEnabled())
+		{
+			continue;
+		}
+
+		Feature->ApplyToView(InOutView, DeltaTime);
 	}
 }
 
 void UNamiCameraModeBase::UpdateFeatures(float DeltaTime)
 {
+	// 优化：只遍历有效的 Feature，减少无效检查
 	for (UNamiCameraFeature* Feature : Features)
 	{
-		if (IsValid(Feature) && Feature->IsEnabled())
+		if (!Feature)
 		{
-			Feature->Update(DeltaTime);
+			continue;
 		}
+
+		// 快速路径：如果 Feature 未启用，跳过 Update
+		if (!Feature->IsEnabled())
+		{
+			continue;
+		}
+
+		Feature->Update(DeltaTime);
 	}
 }
 
@@ -251,6 +295,9 @@ void UNamiCameraModeBase::SortFeatures()
 	{
 		return A.Priority > B.Priority;
 	});
+	
+	// 排序后需要重建 FeatureMap
+	bFeatureMapDirty = true;
 }
 
 void UNamiCameraModeBase::UpdateBlending(float DeltaTime)
