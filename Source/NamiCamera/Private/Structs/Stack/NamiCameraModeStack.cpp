@@ -55,13 +55,38 @@ void FNamiCameraModeStack::PushCameraMode(UNamiCameraModeBase* CameraModeInstanc
 	// 计算起始权重
 	const bool bShouldBlend = ((CameraModeInstance->GetBlendAlpha().BlendTime >= 0.0f) && (StackSize > 0));
 	const float StartBlendWeight = (bShouldBlend ? ExistingStackContribution : 1.0f);
+
+	NAMI_LOG_MODE_BLEND(Log,
+		TEXT("[PushCameraMode] Mode=%s, bShouldBlend=%d, ExistingStackContribution=%.3f, StartBlendWeight=%.3f, StackSize=%d, BlendTime=%.3f"),
+		*CameraModeInstance->GetName(),
+		bShouldBlend ? 1 : 0,
+		ExistingStackContribution,
+		StartBlendWeight,
+		StackSize,
+		CameraModeInstance->GetBlendAlpha().BlendTime);
+
 	CameraModeInstance->SetBlendWeight(StartBlendWeight);
 
 	// 将新条目添加到堆栈
 	CameraModeStack.Insert(CameraModeInstance, 0);
 
-	// 确保堆栈底部的权重始终为 100%
-	CameraModeStack.Last()->SetBlendWeight(1.0f);
+	// 让栈底（旧模式）准备淡出
+	if (CameraModeStack.Num() > 1)
+	{
+		UNamiCameraModeBase* OldMode = CameraModeStack.Last();
+		// 从当前权重平滑过渡到 0（淡出）
+		float CurrentWeight = OldMode->GetBlendAlphaRef().GetBlendedValue();
+
+		NAMI_LOG_MODE_BLEND(Log,
+			TEXT("[PushCameraMode] OldMode=%s, CurrentWeight=%.3f -> 0.0 (fadeout)"),
+			*OldMode->GetName(),
+			CurrentWeight);
+
+		// 1. 设置混合范围：从当前权重到 0
+		OldMode->GetBlendAlphaRef().SetValueRange(CurrentWeight, 0.0f);
+		// 2. 重置混合进度到起始位置，BlendedValue = Lerp(CurrentWeight, 0, 0) = CurrentWeight
+		OldMode->GetBlendAlphaRef().SetAlpha(0.0f);
+	}
 
 	if (ExistingStackIndex == INDEX_NONE)
 	{
@@ -289,7 +314,7 @@ void FNamiCameraModeStack::BlendStack(FNamiCameraView& OutCameraModeView, float 
 		FNamiCameraView OtherView = CameraMode->GetView();
 		OtherView.PivotLocation = BlendedPivotLocation; // 使用混合后的PivotLocation
 		OutCameraModeView.Blend(OtherView, ModeWeight);
-		
+
 		// 确保PivotLocation保持为混合后的值
 		OutCameraModeView.PivotLocation = BlendedPivotLocation;
     }

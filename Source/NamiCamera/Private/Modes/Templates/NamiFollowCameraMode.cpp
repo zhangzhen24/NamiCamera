@@ -11,6 +11,7 @@
 
 UNamiFollowCameraMode::UNamiFollowCameraMode()
 {
+	LastValidControlRotation = FRotator::ZeroRotator;
 }
 
 void UNamiFollowCameraMode::Activate_Implementation()
@@ -18,18 +19,12 @@ void UNamiFollowCameraMode::Activate_Implementation()
 	Super::Activate_Implementation();
 
 	bInitialized = false;
-	CameraVelocity = FVector::ZeroVector;
-	YawVelocity = 0.0f;
-	PitchVelocity = 0.0f;
 }
 
-FNamiCameraView UNamiFollowCameraMode::CalculateView_Implementation(float DeltaTime)
+FVector UNamiFollowCameraMode::ApplyPivotLocationOffset(const FVector& InBasePivot) const
 {
-	FNamiCameraView View;
+	FVector Result = InBasePivot;
 
-	// 1. 计算枢轴点
-	FVector TargetPivot = CalculatePivotLocation();
-	
 	// 应用PivotLocationOffset（视点偏移）
 	FVector PivotOffset = PivotLocationOffset;
 	if (!PivotOffset.IsNearlyZero())
@@ -58,33 +53,38 @@ FNamiCameraView UNamiFollowCameraMode::CalculateView_Implementation(float DeltaT
 					}
 				}
 			}
-			
+
 			// 如果获取到了有效的ControlRotation，立即归一化，然后再进行后续计算
 			if (!ControlRotation.IsNearlyZero())
 			{
 				// 立即归一化，确保获取的 ControlRotation 是归一化后的旋转
 				// 使用0-360度归一化，避免180/-180跳变问题
 				FRotator NormalizedControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
-				
+
 				if (bPivotOffsetUseYawOnly)
 				{
 					// 只使用Yaw，Pitch和Roll设为0
 					NormalizedControlRotation.Pitch = 0.0f;
 					NormalizedControlRotation.Roll = 0.0f;
 				}
-				
+
 				// 使用归一化后的 ControlRotation 旋转 PivotOffset
 				PivotOffset = NormalizedControlRotation.RotateVector(PivotOffset);
 			}
 		}
-		TargetPivot += PivotOffset;
+		Result += PivotOffset;
 	}
-	
-	// 叠加PivotHeightOffset（如果PivotLocationOffset.Z为0或很小）
-	if (FMath::IsNearlyZero(PivotLocationOffset.Z, 1.0f))
-	{
-		TargetPivot.Z += PivotHeightOffset;
-	}
+
+	return Result;
+}
+
+FNamiCameraView UNamiFollowCameraMode::CalculateView_Implementation(float DeltaTime)
+{
+	FNamiCameraView View;
+
+	// 1. 计算枢轴点并应用偏移
+	FVector BasePivot = CalculatePivotLocation(DeltaTime);
+	FVector TargetPivot = ApplyPivotLocationOffset(BasePivot);
 
 	// 2. 计算相机位置
 	FVector TargetCameraLocation = CalculateCameraLocation(TargetPivot);
@@ -92,66 +92,19 @@ FNamiCameraView UNamiFollowCameraMode::CalculateView_Implementation(float DeltaT
 	// 3. 计算相机旋转
 	FRotator TargetRotation = CalculateCameraRotation(TargetCameraLocation, TargetPivot);
 
-	// 4. 应用平滑
+	// 4. 初始化状态（首次执行）
 	if (!bInitialized)
 	{
-		// 首次不平滑，直接设置
 		CurrentPivotLocation = TargetPivot;
 		CurrentCameraLocation = TargetCameraLocation;
 		CurrentCameraRotation = TargetRotation;
 		bInitialized = true;
 	}
-	else if (DeltaTime > 0.0f)
-	{
-		// 性能优化：如果平滑被禁用，直接设置目标值，跳过计算
-		if (!bEnableSmoothing)
-		{
-			CurrentPivotLocation = TargetPivot;
-			CurrentCameraLocation = TargetCameraLocation;
-			CurrentCameraRotation = TargetRotation;
-		}
-		else
-		{
-			// PivotLocation 不再进行平滑处理，直接使用计算值
-				CurrentPivotLocation = TargetPivot;
 
-			// 平滑相机位置
-			if (bEnableCameraLocationSmoothing && CameraLocationSmoothIntensity > 0.0f)
-			{
-				// 将平滑强度映射到实际平滑时间
-				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraLocationSmoothIntensity);
-				CurrentCameraLocation = FNamiCameraMath::SmoothDamp(
-					CurrentCameraLocation,
-					TargetCameraLocation,
-					CameraVelocity,
-					SmoothTime,
-					DeltaTime);
-			}
-			else
-			{
-				CurrentCameraLocation = TargetCameraLocation;
-			}
-
-			// 平滑旋转
-			if (bEnableCameraRotationSmoothing && CameraRotationSmoothIntensity > 0.0f)
-			{
-				// 将平滑强度映射到实际平滑时间
-				float SmoothTime = FNamiCameraMath::MapSmoothIntensity(CameraRotationSmoothIntensity);
-				CurrentCameraRotation = FNamiCameraMath::SmoothDampRotator(
-					CurrentCameraRotation,
-					TargetRotation,
-					YawVelocity,
-					PitchVelocity,
-					SmoothTime,
-					SmoothTime,
-					DeltaTime);
-			}
-			else
-			{
-				CurrentCameraRotation = TargetRotation;
-			}
-		}
-	}
+	// 5. 直接使用计算值（平滑功能已移至 SpringArm）
+	CurrentPivotLocation = TargetPivot;
+	CurrentCameraLocation = TargetCameraLocation;
+	CurrentCameraRotation = TargetRotation;
 
 	// 设置视图
 	View.PivotLocation = CurrentPivotLocation;
@@ -276,12 +229,6 @@ void UNamiFollowCameraMode::ClearCustomPivotLocation()
 
 FVector UNamiFollowCameraMode::CalculatePivotLocation_Implementation(float DeltaTime)
 {
-	// 调用本类的CalculatePivotLocation() const方法
-	return CalculatePivotLocation();
-}
-
-FVector UNamiFollowCameraMode::CalculatePivotLocation() const
-{
 	// 使用自定义枢轴点
 	if (bUseCustomPivotLocation)
 	{
@@ -380,5 +327,69 @@ FRotator UNamiFollowCameraMode::GetPrimaryTargetRotation() const
 		return Primary->GetActorRotation();
 	}
 	return FRotator::ZeroRotator;
+}
+
+FRotator UNamiFollowCameraMode::GetControlRotation_Implementation() const
+{
+	UNamiCameraComponent* CameraComp = GetCameraComponent();
+	if (CameraComp)
+	{
+		// 优先从 Owner Pawn 获取
+		APawn* OwnerPawn = CameraComp->GetOwnerPawn();
+		if (IsValid(OwnerPawn))
+		{
+			FRotator ControlRot = OwnerPawn->GetControlRotation();
+			ControlRot = FNamiCameraMath::NormalizeRotatorTo360(ControlRot);
+			LastValidControlRotation = ControlRot;
+			return ControlRot;
+		}
+
+		// 尝试从 PlayerController 获取
+		APlayerController* PC = CameraComp->GetOwnerPlayerController();
+		if (IsValid(PC))
+		{
+			FRotator ControlRot = PC->GetControlRotation();
+			ControlRot = FNamiCameraMath::NormalizeRotatorTo360(ControlRot);
+			LastValidControlRotation = ControlRot;
+			return ControlRot;
+		}
+	}
+
+	// 后备：返回上一次有效的旋转
+	return FNamiCameraMath::NormalizeRotatorTo360(LastValidControlRotation);
+}
+
+FRotator UNamiFollowCameraMode::ApplyRotationConstraints(
+	const FRotator& InRotation,
+	bool bApplyPitchLimit,
+	float InMinPitch,
+	float InMaxPitch,
+	bool bApplyYawLimit,
+	float InMinYaw,
+	float InMaxYaw,
+	bool bApplyRollLock) const
+{
+	FRotator Result = InRotation;
+
+	// 应用 Pitch 限制
+	if (bApplyPitchLimit)
+	{
+		Result.Pitch = FMath::ClampAngle(Result.Pitch, InMinPitch, InMaxPitch);
+	}
+
+	// 应用 Yaw 限制
+	if (bApplyYawLimit)
+	{
+		Result.Yaw = FMath::ClampAngle(Result.Yaw, InMinYaw, InMaxYaw);
+	}
+
+	// 锁定 Roll
+	if (bApplyRollLock)
+	{
+		Result.Roll = 0.0f;
+	}
+
+	// 归一化到 0-360 度
+	return FNamiCameraMath::NormalizeRotatorTo360(Result);
 }
 

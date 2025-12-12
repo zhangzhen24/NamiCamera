@@ -267,11 +267,6 @@ protected:
 	 */
 	void PostProcessPipeline(float DeltaTime, const FNamiCameraPipelineContext& Context, FMinimalViewInfo& InOutPOV);
 
-	/**
-	 * 应用参数更新控制到视图
-	 */
-	void ApplyParamUpdateControl(const FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView);
-
 	// ========== 平滑混合层 ==========
 
 	/** 当前实际视图（平滑后的结果） */

@@ -88,6 +88,12 @@ bool UNamiCameraSettings::ShouldLogCameraInfo()
 	return Settings && Settings->bEnableCameraInfoLog;
 }
 
+bool UNamiCameraSettings::ShouldLogModeBlend()
+{
+	const UNamiCameraSettings* Settings = Get();
+	return Settings && Settings->bEnableModeBlendLog;
+}
+
 // ========== DrawDebug 检查方法 ==========
 
 bool UNamiCameraSettings::ShouldEnableDrawDebug()
@@ -193,6 +199,12 @@ bool UNamiCameraSettings::ShouldLogCameraInfoOnScreen()
 {
 	const UNamiCameraSettings* Settings = Get();
 	return Settings && Settings->bEnableCameraInfoLogOnScreen;
+}
+
+bool UNamiCameraSettings::ShouldLogModeBlendOnScreen()
+{
+	const UNamiCameraSettings* Settings = Get();
+	return Settings && Settings->bEnableModeBlendLogOnScreen;
 }
 
 float UNamiCameraSettings::GetOnScreenLogDuration()

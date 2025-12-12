@@ -109,19 +109,6 @@ protected:
 	// ========== 核心计算（子类可重写）==========
 
 	/**
-	 * 计算 PivotLocation（内部方法）
-	 * 子类可重写此方法来自定义枢轴点计算逻辑
-	 *
-	 * 默认实现：
-	 * - 如果有自定义 PivotLocation，使用它
-	 * - 如果只有主目标，使用主目标位置
-	 * - 如果有多个目标，计算加权中心
-	 *
-	 * @return 枢轴点位置
-	 */
-	virtual FVector CalculatePivotLocation() const;
-
-	/**
 	 * 计算相机位置
 	 * 基于 PivotLocation 计算相机应该在哪里
 	 *
@@ -149,6 +136,49 @@ protected:
 	 * 用于计算相机偏移方向
 	 */
 	FRotator GetPrimaryTargetRotation() const;
+
+	/**
+	 * 获取控制旋转（Control Rotation）
+	 * 从 OwnerPawn 或 PlayerController 获取，并自动归一化到 0-360 度
+	 *
+	 * @return 归一化后的控制旋转
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Follow Camera|Rotation")
+	FRotator GetControlRotation() const;
+
+	/**
+	 * 应用旋转限制和归一化
+	 * 根据配置限制 Pitch、Yaw，锁定 Roll，并归一化旋转
+	 *
+	 * @param InRotation 输入的旋转
+	 * @param bApplyPitchLimit 是否应用俯仰角限制
+	 * @param InMinPitch 最小俯仰角
+	 * @param InMaxPitch 最大俯仰角
+	 * @param bApplyYawLimit 是否应用偏航角限制
+	 * @param InMinYaw 最小偏航角
+	 * @param InMaxYaw 最大偏航角
+	 * @param bApplyRollLock 是否锁定 Roll 为 0
+	 * @return 处理后的旋转（已归一化）
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Follow Camera|Rotation")
+	FRotator ApplyRotationConstraints(
+		const FRotator& InRotation,
+		bool bApplyPitchLimit = false,
+		float InMinPitch = -89.0f,
+		float InMaxPitch = 89.0f,
+		bool bApplyYawLimit = false,
+		float InMinYaw = -180.0f,
+		float InMaxYaw = 180.0f,
+		bool bApplyRollLock = true) const;
+
+	/**
+	 * 应用 PivotLocationOffset 到基础 PivotLocation
+	 * 根据配置应用偏移，并考虑控制器旋转
+	 *
+	 * @param InBasePivot 基础枢轴点位置
+	 * @return 应用偏移后的枢轴点位置
+	 */
+	FVector ApplyPivotLocationOffset(const FVector& InBasePivot) const;
 
 
 public:
@@ -185,59 +215,6 @@ public:
 			  meta = (EditCondition = "bUseTargetRotation",
 					  Tooltip = "是否只使用Yaw旋转（忽略Pitch和Roll）"))
 	bool bUseYawOnly = true;
-
-	/** 枢轴点额外高度偏移（向后兼容，建议使用PivotLocationOffset.Z代替） */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Offset",
-			  meta = (Tooltip = "向后兼容属性，建议使用PivotLocationOffset.Z代替。如果PivotLocationOffset.Z为0或很小，此值会被应用。"))
-	float PivotHeightOffset = 0.0f;
-
-	/**
-	 * 是否启用平滑
-	 * 如果禁用，相机将立即跟随目标，无延迟
-	 * 如果启用，相机会根据平滑时间参数平滑跟随目标
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (InlineEditConditionToggle,
-					  Tooltip = "是否启用平滑。如果禁用，相机将立即跟随目标，无延迟。如果启用，相机会根据平滑时间参数平滑跟随目标。"))
-	bool bEnableSmoothing = true;
-
-	/** 是否启用相机位置平滑 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (EditCondition = "bEnableSmoothing",
-					  Tooltip = "是否启用相机位置的平滑移动"))
-	bool bEnableCameraLocationSmoothing = true;
-
-	/** 是否启用相机旋转平滑 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (EditCondition = "bEnableSmoothing",
-					  Tooltip = "是否启用相机旋转的平滑过渡"))
-	bool bEnableCameraRotationSmoothing = true;
-
-	/**
-	 * 相机位置平滑强度
-	 * 控制相机位置移动的平滑程度
-	 * - 配置范围：0.0-1.0
-	 * - 应用范围：映射到0.0-2.0的实际平滑时间
-	 * - 值越小：相机移动越快，响应更及时
-	 * - 值越大：相机移动越慢，但更平滑
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
-					  Tooltip = "控制相机位置移动的平滑程度。配置范围0.0-1.0，实际映射到0.0-2.0的平滑时间。值越小移动越快，值越大越平滑。"))
-	float CameraLocationSmoothIntensity = 0.0f;
-
-	/**
-	 * 相机旋转平滑强度
-	 * 控制相机旋转的平滑程度
-	 * - 配置范围：0.0-1.0
-	 * - 应用范围：映射到0.0-2.0的实际平滑时间
-	 * - 值越小：旋转越快，响应更及时
-	 * - 值越大：旋转越慢，但更平滑
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Follow Camera|Smoothing",
-			  meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bEnableSmoothing",
-					  Tooltip = "控制相机旋转的平滑程度。配置范围0.0-1.0，实际映射到0.0-2.0的平滑时间。值越小旋转越快，值越大越平滑。"))
-	float CameraRotationSmoothIntensity = 0.0f;
 
 	// ========== 动态FOV配置 ==========
 
@@ -281,19 +258,17 @@ protected:
 	UPROPERTY()
 	TArray<FNamiFollowTarget> Targets;
 
+	/** 上一次有效的控制旋转（用于后备） */
+	mutable FRotator LastValidControlRotation;
+
 	/** 自定义枢轴点 */
 	FVector CustomPivotLocation = FVector::ZeroVector;
 	bool bUseCustomPivotLocation = false;
 
-	/** 当前状态（平滑后） */
+	/** 当前状态 */
 	FVector CurrentPivotLocation = FVector::ZeroVector;
 	FVector CurrentCameraLocation = FVector::ZeroVector;
 	FRotator CurrentCameraRotation = FRotator::ZeroRotator;
-
-	/** 平滑速度 */
-	FVector CameraVelocity = FVector::ZeroVector;
-	float YawVelocity = 0.0f;
-	float PitchVelocity = 0.0f;
 
 	/** 是否已初始化 */
 	bool bInitialized = false;

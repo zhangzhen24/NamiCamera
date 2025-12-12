@@ -109,7 +109,7 @@ void FNamiSpringArm::ApplyLocationLag(FVector &InOutDesiredLoc, const FVector &A
 FVector FNamiSpringArm::CalculateDesiredCameraLocation(const FVector &ArmOrigin, const FRotator &DesiredRot, const FVector &OffsetLocation) const
 {
 	FVector DesiredLoc = ArmOrigin;
-	DesiredLoc -= DesiredRot.Vector() * TargetArmLength;
+	DesiredLoc -= DesiredRot.Vector() * SpringArmLength;
 	DesiredLoc += FRotationMatrix(DesiredRot).TransformVector(OffsetLocation);
 	return DesiredLoc;
 }
@@ -117,7 +117,7 @@ FVector FNamiSpringArm::CalculateDesiredCameraLocation(const FVector &ArmOrigin,
 FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector &ArmOrigin, const FVector &DesiredLoc, const TArray<AActor *> &IgnoreActors)
 {
 	// 性能优化：早期退出条件
-	if (!World || !bDoCollisionTest || TargetArmLength == 0.0f)
+	if (!World || !bDoCollisionTest || SpringArmLength == 0.0f)
 	{
 		UnfixedCameraPosition = DesiredLoc;
 		bIsCameraFixed = false;
@@ -148,7 +148,7 @@ FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector
 FVector FNamiSpringArm::PerformCollisionTrace(const UWorld *World, const FVector &ArmOrigin, const FVector &DesiredLoc, const TArray<const AActor *> &IgnoreActors)
 {
 	// 性能优化：早期退出条件
-	if (!World || !bDoCollisionTest || TargetArmLength == 0.0f)
+	if (!World || !bDoCollisionTest || SpringArmLength == 0.0f)
 	{
 		UnfixedCameraPosition = DesiredLoc;
 		bIsCameraFixed = false;

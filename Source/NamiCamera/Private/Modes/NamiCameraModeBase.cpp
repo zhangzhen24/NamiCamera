@@ -1,10 +1,10 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Modes/NamiCameraModeBase.h"
-#include "Features/NamiCameraFeature.h"
-#include "Components/NamiCameraComponent.h"
 #include "Animation/BlendSpace.h"
+#include "Components/NamiCameraComponent.h"
 #include "Enums/NamiCameraEnums.h"
+#include "Features/NamiCameraFeature.h"
 #include "GameFramework/Pawn.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraModeBase)
@@ -64,6 +64,8 @@ void UNamiCameraModeBase::Initialize_Implementation(UNamiCameraComponent* InCame
 	{
 		CameraBlendAlpha.SetCustomCurve(BlendStack.CustomCurve);
 	}
+	// 设置混合范围：从 0.0 到 1.0（默认淡入）
+	CameraBlendAlpha.SetValueRange(0.0f, 1.0f);
 
 	// 初始化所有Feature
 	for (UNamiCameraFeature* Feature : Features)
@@ -141,7 +143,7 @@ FVector UNamiCameraModeBase::CalculatePivotLocation_Implementation(float DeltaTi
 			return OwnerPawn->GetActorLocation();
 		}
 	}
-	
+
 	// 回退：返回零向量
 	return FVector::ZeroVector;
 }
@@ -246,7 +248,32 @@ void UNamiCameraModeBase::SetCameraComponent(UNamiCameraComponent* NewCameraComp
 void UNamiCameraModeBase::SetBlendWeight(float InWeight)
 {
 	BlendWeight = FMath::Clamp(InWeight, 0.0f, 1.0f);
-	CameraBlendAlpha.SetAlpha(BlendWeight);
+
+	// 调试：记录设置前的状态
+	NAMI_LOG_MODE_BLEND(Log,
+		TEXT("[%s] SetBlendWeight: InWeight=%.3f, BeforeBlendedValue=%.3f, BeforeBegin=%.3f, BeforeDesired=%.3f, BlendTime=%.3f"),
+		*GetName(),
+		InWeight,
+		CameraBlendAlpha.GetBlendedValue(),
+		CameraBlendAlpha.GetBeginValue(),
+		CameraBlendAlpha.GetDesiredValue(),
+		CameraBlendAlpha.GetBlendTime());
+
+	// 1. 设置混合范围：从起始权重（InWeight）到目标值（1.0）
+	CameraBlendAlpha.SetValueRange(BlendWeight, 1.0f);
+
+	// 2. 重要：SetValueRange 不会重置 BlendedValue，需要手动重置混合进度
+	//    SetAlpha(0) 将混合进度重置到起始位置
+	//    此时 BlendedValue = Lerp(InWeight, 1.0, 0) = InWeight
+	CameraBlendAlpha.SetAlpha(0.0f);
+
+	// 调试：记录设置后的状态
+	NAMI_LOG_MODE_BLEND(Log,
+		TEXT("[%s] SetBlendWeight After: BlendedValue=%.3f, Begin=%.3f, Desired=%.3f"),
+		*GetName(),
+		CameraBlendAlpha.GetBlendedValue(),
+		CameraBlendAlpha.GetBeginValue(),
+		CameraBlendAlpha.GetDesiredValue());
 }
 
 void UNamiCameraModeBase::ApplyFeaturesToView(FNamiCameraView& InOutView, float DeltaTime)
@@ -302,19 +329,39 @@ void UNamiCameraModeBase::SortFeatures()
 
 void UNamiCameraModeBase::UpdateBlending(float DeltaTime)
 {
+	// 调试：记录更新前的状态
+	float BeforeAlpha = CameraBlendAlpha.GetAlpha();
+	float BeforeBlendedValue = CameraBlendAlpha.GetBlendedValue();
+	float BeforeBeginValue = CameraBlendAlpha.GetBeginValue();
+	float BeforeDesiredValue = CameraBlendAlpha.GetDesiredValue();
+	float BlendTimeRemaining = CameraBlendAlpha.GetBlendTimeRemaining();
+
 	// 更新 FAlphaBlend（自动从当前 Alpha 过渡到 DesiredValue，默认 1.0）
 	CameraBlendAlpha.Update(DeltaTime);
-	
+
 	// 获取混合后的值（线性混合值）
 	float BlendedValue = CameraBlendAlpha.GetBlendedValue();
-	
+
 	// 应用混合曲线（使用 BlendStack，与 EnhancedCameraSystem 保持一致）
 	BlendWeight = FAlphaBlend::AlphaToBlendOption(
-		BlendedValue, 
-		BlendStack.BlendOption, 
+		BlendedValue,
+		BlendStack.BlendOption,
 		BlendStack.CustomCurve
 	);
-	
+
 	// 确保权重在有效范围内
 	BlendWeight = FMath::Clamp(BlendWeight, 0.0f, 1.0f);
+
+	// 调试：打印混合状态（只在权重不是0或1时打印，避免日志刷屏）
+	if (BlendWeight > 0.01f && BlendWeight < 0.99f)
+	{
+		NAMI_LOG_MODE_BLEND(Log,
+			TEXT("[%s] Blend: Alpha=%.3f->%.3f, BlendedValue=%.3f->%.3f, Begin=%.3f, Desired=%.3f, TimeRemaining=%.3f, Weight=%.3f"),
+			*GetName(),
+			BeforeAlpha, CameraBlendAlpha.GetAlpha(),
+			BeforeBlendedValue, BlendedValue,
+			BeforeBeginValue, BeforeDesiredValue,
+			BlendTimeRemaining,
+			BlendWeight);
+	}
 }

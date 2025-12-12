@@ -38,16 +38,7 @@ public:
 	
 	/** 吊臂偏移 */
 	uint8 bArmOffset:1 = false;
-	
-	// ========== 控制旋转参数 ==========
-	
-	/** 
-	 * 控制旋转偏移（玩家视角意图）
-	 * 修改 ControlRotation，代表临时改变玩家"想看哪里"
-	 * 可被玩家输入打断
-	 */
-	uint8 bControlRotationOffset:1 = false;
-	
+
 	// ========== 相机参数 ==========
 	
 	/** 相机位置偏移 */

@@ -94,7 +94,7 @@ public:
 	/**
 	 * 计算相机视图
 	 * 这是模式的核心方法，子类应该重写此方法
-	 * 
+	 *
 	 * @param DeltaTime 帧时间
 	 * @return 计算后的相机视图
 	 */
@@ -104,7 +104,7 @@ public:
 	/**
 	 * 计算PivotLocation（阶段1）
 	 * 子类应该重写此方法来提供具体的PivotLocation计算逻辑
-	 * 
+	 *
 	 * @param DeltaTime 帧时间
 	 * @return 计算出的PivotLocation
 	 */
@@ -203,6 +203,9 @@ public:
 
 	/** 获取 FAlphaBlendArgs 引用（供 Stack 使用，与 EnhancedCameraSystem 兼容） */
 	FAlphaBlendArgs& GetBlendAlpha() { return BlendStack; }
+
+	/** 获取混合 Alpha 的引用（用于外部设置淡出） */
+	FAlphaBlend& GetBlendAlphaRef() { return CameraBlendAlpha; }
 
 
 public:

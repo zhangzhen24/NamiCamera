@@ -13,7 +13,6 @@ FNamiCameraState::FNamiCameraState()
 	, ArmLength(300.0f)
 	, ArmRotation(FRotator::ZeroRotator)
 	, ArmOffset(FVector::ZeroVector)
-	, ControlRotationOffset(FRotator::ZeroRotator)
 	, CameraLocationOffset(FVector::ZeroVector)
 	, CameraRotationOffset(FRotator::ZeroRotator)
 	, FieldOfView(90.0f)
@@ -25,12 +24,11 @@ FNamiCameraState::FNamiCameraState()
 void FNamiCameraState::ComputeOutput()
 {
 	// ========== 第一步：计算基础枢轴旋转 ==========
-	// PivotRotation（来自 ControlRotation）+ ControlRotationOffset（视角控制偏移）
-	const FRotator BasePivotRotation = PivotRotation + ControlRotationOffset;
+	const FRotator BasePivotRotation = PivotRotation;
 	const FQuat BasePivotQuat = BasePivotRotation.Quaternion();
-	
-	NAMI_LOG_STATE(VeryVerbose, TEXT("[FNamiCameraState::ComputeOutput] 基础枢轴旋转: PivotRotation=%s, ControlRotationOffset=%s, BasePivotRotation=%s"),
-		*PivotRotation.ToString(), *ControlRotationOffset.ToString(), *BasePivotRotation.ToString());
+
+	NAMI_LOG_STATE(VeryVerbose, TEXT("[FNamiCameraState::ComputeOutput] 基础枢轴旋转: PivotRotation=%s"),
+		*PivotRotation.ToString());
 	
 	// ========== 第二步：计算基础相机偏移向量（未应用 ArmRotation）==========
 	// 相机在枢轴点后方，距离为 ArmLength
@@ -113,7 +111,6 @@ void FNamiCameraState::ApplyChanged(const FNamiCameraState& Other, ENamiCameraBl
 	if (OtherFlags.bArmLength) ChangedParams.Add(TEXT("ArmLength"));
 	if (OtherFlags.bArmRotation) ChangedParams.Add(TEXT("ArmRotation"));
 	if (OtherFlags.bArmOffset) ChangedParams.Add(TEXT("ArmOffset"));
-	if (OtherFlags.bControlRotationOffset) ChangedParams.Add(TEXT("ControlRotationOffset"));
 	if (OtherFlags.bCameraLocationOffset) ChangedParams.Add(TEXT("CameraLocationOffset"));
 	if (OtherFlags.bCameraRotationOffset) ChangedParams.Add(TEXT("CameraRotationOffset"));
 	if (OtherFlags.bFieldOfView) ChangedParams.Add(TEXT("FieldOfView"));
@@ -274,56 +271,6 @@ void FNamiCameraState::ApplyChanged(const FNamiCameraState& Other, ENamiCameraBl
 		ChangedFlags.bArmOffset = true;
 	}
 	
-	// 控制旋转参数
-	if (OtherFlags.bControlRotationOffset)
-	{
-		FRotator OldControlRotationOffset = ControlRotationOffset;
-		// 优化：只在混合前归一化一次，混合后归一化一次
-		FRotator NormalizedCurrent = FNamiCameraMath::NormalizeRotatorTo360(ControlRotationOffset);
-		FRotator NormalizedTarget = FNamiCameraMath::NormalizeRotatorTo360(Other.ControlRotationOffset);
-		
-		switch (BlendMode)
-		{
-		case ENamiCameraBlendMode::Additive:
-			// Additive: 在当前值基础上增加偏移
-			{
-				// 计算加性值（目标值 * 权重）
-				FRotator AdditiveValue = NormalizedTarget * Weight;
-				
-				// 直接相加，FindDeltaAngle360 会处理归一化
-				float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Pitch, NormalizedCurrent.Pitch + AdditiveValue.Pitch);
-				float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Yaw, NormalizedCurrent.Yaw + AdditiveValue.Yaw);
-				float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Roll, NormalizedCurrent.Roll + AdditiveValue.Roll);
-				
-				// 应用差值（结果会在最后归一化）
-				ControlRotationOffset.Pitch = NormalizedCurrent.Pitch + PitchDelta;
-				ControlRotationOffset.Yaw = NormalizedCurrent.Yaw + YawDelta;
-				ControlRotationOffset.Roll = NormalizedCurrent.Roll + RollDelta;
-			}
-			break;
-		case ENamiCameraBlendMode::Override:
-			// Override: 从当前值过渡到目标值
-			{
-				// 计算最短路径差值
-				float PitchDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Pitch, NormalizedTarget.Pitch);
-				float YawDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Yaw, NormalizedTarget.Yaw);
-				float RollDelta = FNamiCameraMath::FindDeltaAngle360(NormalizedCurrent.Roll, NormalizedTarget.Roll);
-				
-				// 应用权重插值（结果会在最后归一化）
-				ControlRotationOffset.Pitch = NormalizedCurrent.Pitch + PitchDelta * Weight;
-				ControlRotationOffset.Yaw = NormalizedCurrent.Yaw + YawDelta * Weight;
-				ControlRotationOffset.Roll = NormalizedCurrent.Roll + RollDelta * Weight;
-			}
-			break;
-		}
-		// 确保结果在0-360度范围（只归一化一次）
-		ControlRotationOffset = FNamiCameraMath::NormalizeRotatorTo360(ControlRotationOffset);
-		ChangedFlags.bControlRotationOffset = true;
-		
-		NAMI_LOG_STATE(VeryVerbose, TEXT("[FNamiCameraState::ApplyChanged] ControlRotationOffset混合: 旧值=%s, 新值=%s, 目标值=%s, 模式=%d, 权重=%.3f"),
-			*OldControlRotationOffset.ToString(), *ControlRotationOffset.ToString(), *Other.ControlRotationOffset.ToString(), (int32)BlendMode, Weight);
-	}
-	
 	// 相机参数
 	if (OtherFlags.bCameraLocationOffset)
 	{
@@ -429,8 +376,8 @@ void FNamiCameraState::ApplyChanged(const FNamiCameraState& Other, ENamiCameraBl
 		ChangedFlags.bCameraRotation = true;
 	}
 	
-	NAMI_LOG_STATE(Verbose, TEXT("[FNamiCameraState::ApplyChanged] 混合完成: 当前状态 - PivotRotation=%s, ArmRotation=%s, ArmLength=%.2f, ControlRotationOffset=%s"),
-		*PivotRotation.ToString(), *ArmRotation.ToString(), ArmLength, *ControlRotationOffset.ToString());
+	NAMI_LOG_STATE(Verbose, TEXT("[FNamiCameraState::ApplyChanged] 混合完成: 当前状态 - PivotRotation=%s, ArmRotation=%s, ArmLength=%.2f"),
+		*PivotRotation.ToString(), *ArmRotation.ToString(), ArmLength);
 }
 
 void FNamiCameraState::Lerp(const FNamiCameraState& To, float Alpha)
@@ -442,8 +389,6 @@ void FNamiCameraState::Lerp(const FNamiCameraState& To, float Alpha)
 	ArmLength = FMath::Lerp(ArmLength, To.ArmLength, Alpha);
 	ArmRotation = FMath::Lerp(ArmRotation, To.ArmRotation, Alpha);
 	ArmOffset = FMath::Lerp(ArmOffset, To.ArmOffset, Alpha);
-	// 控制旋转参数
-	ControlRotationOffset = FMath::Lerp(ControlRotationOffset, To.ControlRotationOffset, Alpha);
 	// 相机参数
 	CameraLocationOffset = FMath::Lerp(CameraLocationOffset, To.CameraLocationOffset, Alpha);
 	CameraRotationOffset = FMath::Lerp(CameraRotationOffset, To.CameraRotationOffset, Alpha);
@@ -487,12 +432,6 @@ void FNamiCameraState::LerpChanged(const FNamiCameraState& To, float Alpha, cons
 		ArmOffset = FMath::Lerp(ArmOffset, To.ArmOffset, Alpha);
 		ChangedFlags.bArmOffset = true;
 	}
-	// 控制旋转参数
-	if (EffectiveMask.bControlRotationOffset)
-	{
-		ControlRotationOffset = FMath::Lerp(ControlRotationOffset, To.ControlRotationOffset, Alpha);
-		ChangedFlags.bControlRotationOffset = true;
-	}
 	// 相机参数
 	if (EffectiveMask.bCameraLocationOffset)
 	{
@@ -531,8 +470,6 @@ void FNamiCameraState::Reset()
 	ArmLength = 300.0f;
 	ArmRotation = FRotator::ZeroRotator;
 	ArmOffset = FVector::ZeroVector;
-	// 控制旋转参数
-	ControlRotationOffset = FRotator::ZeroRotator;
 	// 相机参数
 	CameraLocationOffset = FVector::ZeroVector;
 	CameraRotationOffset = FRotator::ZeroRotator;
@@ -583,12 +520,6 @@ void FNamiCameraState::SetArmOffset(const FVector& InValue)
 {
 	ArmOffset = InValue;
 	ChangedFlags.bArmOffset = true;
-}
-
-void FNamiCameraState::SetControlRotationOffset(const FRotator& InValue)
-{
-	ControlRotationOffset = InValue;
-	ChangedFlags.bControlRotationOffset = true;
 }
 
 void FNamiCameraState::SetCameraLocationOffset(const FVector& InValue)
@@ -665,19 +596,6 @@ void FNamiCameraState::AddArmOffset(const FVector& InDelta)
 {
 	ArmOffset += InDelta;
 	ChangedFlags.bArmOffset = true;
-}
-
-void FNamiCameraState::AddControlRotationOffset(const FRotator& InDelta)
-{
-	// 使用0-360度归一化，避免180/-180跳变问题
-	FRotator NormalizedCurrent = FNamiCameraMath::NormalizeRotatorTo360(ControlRotationOffset);
-	FRotator NormalizedDelta = FNamiCameraMath::NormalizeRotatorTo360(InDelta);
-	
-	ControlRotationOffset.Pitch = FNamiCameraMath::NormalizeAngleTo360(NormalizedCurrent.Pitch + NormalizedDelta.Pitch);
-	ControlRotationOffset.Yaw = FNamiCameraMath::NormalizeAngleTo360(NormalizedCurrent.Yaw + NormalizedDelta.Yaw);
-	ControlRotationOffset.Roll = FNamiCameraMath::NormalizeAngleTo360(NormalizedCurrent.Roll + NormalizedDelta.Roll);
-	
-	ChangedFlags.bControlRotationOffset = true;
 }
 
 void FNamiCameraState::AddCameraLocationOffset(const FVector& InDelta)

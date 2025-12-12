@@ -32,7 +32,7 @@ void UNamiCameraFeature::ApplyToView_Implementation(FNamiCameraView& InOutView, 
 }
 
 void UNamiCameraFeature::ApplyToViewWithContext_Implementation(
-	FNamiCameraView& InOutView, 
+	FNamiCameraView& InOutView,
 	float DeltaTime,
 	FNamiCameraPipelineContext& Context)
 {

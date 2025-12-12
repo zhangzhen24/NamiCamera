@@ -182,6 +182,18 @@ public:
 			ToolTip = "将关键相机信息日志输出到屏幕\n• 包括相机位置、旋转、枢轴点、吊臂参数等\n• 用于调试相机状态和参数变化\n• 建议在调试相机行为时开启"))
 	bool bEnableCameraInfoLogOnScreen{false};
 
+	/** 是否启用模式混合日志输出到Log（模式切换和混合过程） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
+		meta = (
+			ToolTip = "将模式混合日志输出到Log窗口\n• 包括 PushCameraMode、SetBlendWeight、UpdateBlending 等\n• 用于调试相机模式切换和混合过程\n• 建议在调试模式切换问题时开启"))
+	bool bEnableModeBlendLog{false};
+
+	/** 是否启用模式混合日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (
+			ToolTip = "将模式混合日志输出到屏幕\n• 包括 PushCameraMode、SetBlendWeight、UpdateBlending 等\n• 用于调试相机模式切换和混合过程\n• 建议在调试模式切换问题时开启"))
+	bool bEnableModeBlendLogOnScreen{false};
+
 	// ========== DrawDebug 可视化 ==========
 
 	/** 是否启用 DrawDebug 绘制（全局开关） */
@@ -319,6 +331,12 @@ public:
 
 	/** 检查是否应该将相机信息日志输出到屏幕 */
 	static bool ShouldLogCameraInfoOnScreen();
+
+	/** 检查是否应该打印模式混合日志 */
+	static bool ShouldLogModeBlend();
+
+	/** 检查是否应该将模式混合日志输出到屏幕 */
+	static bool ShouldLogModeBlendOnScreen();
 
 	// ========== DrawDebug 检查方法 ==========
 

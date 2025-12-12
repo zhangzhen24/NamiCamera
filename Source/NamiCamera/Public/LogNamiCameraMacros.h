@@ -191,3 +191,16 @@
 		} \
 	} while(0)
 
+// ========== 模式混合日志（模式切换和混合过程）==========
+#define NAMI_LOG_MODE_BLEND(Verbosity, Format, ...) \
+	do { \
+		if (UNamiCameraSettings::ShouldLogModeBlend()) \
+		{ \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogModeBlendOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
+		} \
+	} while(0)
+

@@ -80,57 +80,6 @@ enum class ENamiCameraModifyStage : uint8
 };
 
 /**
- * 视角控制模式
- * 
- * 定义当 Modifier 修改玩家视角时，如何处理玩家输入
- */
-UENUM(BlueprintType)
-enum class ENamiCameraControlMode : uint8
-{
-	/** 
-	 * 建议视角：玩家输入可打断
-	 * 当检测到玩家相机输入时，自动退出视角控制
-	 * 适用于：技能演出、轻量引导
-	 */
-	Suggestion UMETA(DisplayName = "建议视角"),
-	
-	/** 
-	 * 强制视角：玩家输入不可打断
-	 * 完全控制玩家视角，忽略玩家输入
-	 * 适用于：过场动画、QTE、剧情演出
-	 */
-	Forced UMETA(DisplayName = "强制视角"),
-	
-	/** 
-	 * 混合视角：玩家输入会衰减效果权重
-	 * 玩家输入越大，效果权重越低
-	 * 适用于：柔和的视角引导
-	 */
-	Blended UMETA(DisplayName = "混合视角"),
-};
-
-/**
- * 相机输入模式
- * 
- * 定义技能相机如何处理玩家输入
- */
-UENUM(BlueprintType)
-enum class ENamiCameraInputMode : uint8
-{
-	/** 
-	 * 无输入：完全忽略玩家输入
-	 * 适用于：过场动画、QTE、剧情演出
-	 */
-	NoInput UMETA(DisplayName = "无输入"),
-	
-	/** 
-	 * 有输入：允许玩家输入影响相机
-	 * 适用于：技能相机、战斗相机
-	 */
-	WithInput UMETA(DisplayName = "有输入"),
-};
-
-/**
  * 相机效果结束行为
  */
 UENUM(BlueprintType)
@@ -146,49 +95,4 @@ enum class ENamiCameraEndBehavior : uint8
 	Stay UMETA(DisplayName = "保持效果"),
 };
 
-/**
- * 相机参数更新模式
- * 定义参数在不同阶段如何更新
- */
-UENUM(BlueprintType)
-enum class ENamiCameraParamUpdateMode : uint8
-{
-	/** 正常更新：由当前 Feature 控制 */
-	Normal UMETA(DisplayName = "正常更新"),
-	
-	/** 停止更新：参数冻结在当前值 */
-	Frozen UMETA(DisplayName = "停止更新"),
-	
-	/** 维持现状：保持当前值，不混合回基础值 */
-	Preserved UMETA(DisplayName = "维持现状"),
-	
-	/** 玩家输入：由玩家输入控制 */
-	PlayerInput UMETA(DisplayName = "玩家输入"),
-	
-	/** 基础值：使用基础状态的值（来自 Mode） */
-	BaseValue UMETA(DisplayName = "基础值"),
-};
-
-/**
- * 输入控制状态
- * 管理当前 Feature 的输入控制模式
- */
-UENUM(BlueprintType)
-enum class ENamiCameraInputControlState : uint8
-{
-	/** 玩家输入模式：旋转参数由玩家输入控制 */
-	PlayerInput UMETA(DisplayName = "玩家输入"),
-	
-	/** 完全控制模式：CameraAdjust 完全控制所有参数 */
-	FullControl UMETA(DisplayName = "完全控制"),
-	
-	/** 可打断模式：CameraAdjust 控制，但可被玩家输入打断 */
-	Interruptible UMETA(DisplayName = "可打断"),
-	
-	/** 混合模式：CameraAdjust 控制，但玩家输入会衰减权重 */
-	Blended UMETA(DisplayName = "混合"),
-	
-	/** 打断中模式：已触发打断，旋转参数交给玩家 */
-	Interrupted UMETA(DisplayName = "打断中"),
-};
 

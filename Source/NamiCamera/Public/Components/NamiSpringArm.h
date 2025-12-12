@@ -31,8 +31,8 @@ public:
 
 	/** 弹簧臂长度（相机到Pivot的距离，无碰撞时） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Camera, 
-		meta=(DisplayName="弹簧臂长度", ClampMin="0.0", ClampMax="10000.0", UIMin="0.0", UIMax="10000.0"))
-	float TargetArmLength = 0.0f;
+		meta=( ClampMin="0.0", ClampMax="10000.0", UIMin="0.0", UIMax="10000.0"))
+	float SpringArmLength = 0.0f;
 
 	/** 查询探针大小（单位：Unreal单位） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=CameraCollision, meta=(EditCondition="bDoCollisionTest"))

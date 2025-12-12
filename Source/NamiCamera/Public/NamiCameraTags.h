@@ -5,5 +5,4 @@
 #include "NativeGameplayTags.h"
 
 NAMICAMERA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Camera_Feature_ManualCleanup);
-NAMICAMERA_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Tag_Camera_Feature_Source_ANS_CameraAdjust);
 

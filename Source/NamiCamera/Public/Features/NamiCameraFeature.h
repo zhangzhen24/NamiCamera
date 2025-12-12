@@ -64,14 +64,14 @@ public:
 	/**
 	 * 应用功能到视图（带 Context）
 	 * 新方法，提供 Context 访问，用于支持参数更新控制
-	 * 
+	 *
 	 * @param InOutView 输入输出的视图
 	 * @param DeltaTime 帧时间
 	 * @param Context 管线上下文
 	 */
 	UFUNCTION(BlueprintNativeEvent, Category = "Camera Feature")
 	void ApplyToViewWithContext(
-		UPARAM(ref) FNamiCameraView& InOutView, 
+		UPARAM(ref) FNamiCameraView& InOutView,
 		float DeltaTime,
 		UPARAM(ref) FNamiCameraPipelineContext& Context);
 

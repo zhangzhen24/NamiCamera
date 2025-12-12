@@ -2,7 +2,6 @@
 
 #include "Modes/Presets/NamiShoulderCamera.h"
 #include "Libraries/NamiCameraMath.h"
-#include "Features/NamiSpringArmFeature.h"
 
 UNamiShoulderCamera::UNamiShoulderCamera()
 {
@@ -12,14 +11,6 @@ UNamiShoulderCamera::UNamiShoulderCamera()
     // 更小的俯仰角范围，适合肩部视角
     MinPitch = -89.0f;
     MaxPitch = 89.0f;
-
-    // 更灵敏的鼠标控制
-    MouseSensitivity = 1.2f;
-
-    // 启用平滑，获得更流畅的体验
-    bEnableSmoothing = true;
-    CameraLocationSmoothIntensity = 0.15f;
-    CameraRotationSmoothIntensity = 0.1f;
 
     // 初始化原始相机距离和FOV
     OriginalCameraDistance = 325.0f;  // 更紧凑的相机距离
@@ -32,20 +23,21 @@ void UNamiShoulderCamera::Initialize_Implementation(UNamiCameraComponent *InCame
 
     // 保存原始相机距离和FOV
     OriginalFOV = DefaultFOV;
-    
-    // 配置 SpringArmFeature 为肩部视角相机的默认值
-    UNamiSpringArmFeature* SpringArmFeature = GetSpringArmFeature();
-    if (SpringArmFeature)
-    {
-        SpringArmFeature->SpringArm.TargetArmLength = OriginalCameraDistance;  // 更紧凑的相机距离
-    }
+
+    // 配置内置 SpringArm 为肩部视角相机的默认值
+    SpringArm.SpringArmLength = OriginalCameraDistance;  // 更紧凑的相机距离
+
+    // 启用SpringArm滞后，获得更流畅的体验
+    SpringArm.bEnableCameraLag = true;
+    SpringArm.CameraLagSpeed = 10.0f;  // 快速响应
+    SpringArm.bEnableCameraRotationLag = true;
+    SpringArm.CameraRotationLagSpeed = 10.0f;  // 快速响应
 }
 
 FNamiCameraView UNamiShoulderCamera::CalculateView_Implementation(float DeltaTime)
 {
     // 1. 计算观察点（PivotLocation）
-    FVector TargetPivot = CalculatePivotLocation();
-    TargetPivot.Z += PivotHeightOffset;
+    FVector TargetPivot = CalculatePivotLocation(DeltaTime);
 
     // 2. 获取控制旋转（相机旋转）
     FRotator ControlRotation = GetControlRotation();
@@ -56,26 +48,12 @@ FNamiCameraView UNamiShoulderCamera::CalculateView_Implementation(float DeltaTim
     // ControlRotation.Pitch *= MouseSensitivity;
     // ControlRotation.Yaw *= MouseSensitivity;
 
-    // 应用Pitch限制
-    if (bLimitPitch)
-    {
-        ControlRotation.Pitch = FMath::ClampAngle(ControlRotation.Pitch, MinPitch, MaxPitch);
-    }
-
-    // 应用Yaw限制
-    if (bLimitYaw)
-    {
-        ControlRotation.Yaw = FMath::ClampAngle(ControlRotation.Yaw, MinYaw, MaxYaw);
-    }
-
-    // 锁定Roll旋转
-    if (bLockRoll)
-    {
-        ControlRotation.Roll = 0.0f;
-    }
-
-    // 使用0-360度归一化，避免180/-180跳变问题
-    ControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ControlRotation);
+    // 应用旋转限制和归一化
+    ControlRotation = ApplyRotationConstraints(
+        ControlRotation,
+        bLimitPitch, MinPitch, MaxPitch,
+        bLimitYaw, MinYaw, MaxYaw,
+        bLockRoll);
 
     // 3. 应用肩部偏移
     FVector ShoulderOffsetVector = FVector::ZeroVector;
@@ -92,15 +70,7 @@ FNamiCameraView UNamiShoulderCamera::CalculateView_Implementation(float DeltaTim
         ShoulderOffsetVector = FRotationMatrix(ControlRotation).GetUnitAxis(EAxis::Y) * ShoulderOffset;
     }
 
-    // 4. 应用相机距离缩放到 SpringArmFeature
-    UNamiSpringArmFeature* SpringArmFeature = GetSpringArmFeature();
-    if (SpringArmFeature)
-    {
-        float ScaledArmLength = OriginalCameraDistance * CameraDistanceScale;
-        SpringArmFeature->SpringArm.TargetArmLength = ScaledArmLength;
-    }
-
-    // 5. 创建基础视图（应用肩部偏移到 PivotLocation）
+    // 4. 创建基础视图（应用肩部偏移到 PivotLocation）
         FNamiCameraView View;
     View.PivotLocation = TargetPivot + ShoulderOffsetVector;
     View.CameraLocation = TargetPivot + ShoulderOffsetVector;  // 初始位置，将由 SpringArmFeature 修改
@@ -109,14 +79,8 @@ FNamiCameraView UNamiShoulderCamera::CalculateView_Implementation(float DeltaTim
         View.ControlRotation = ControlRotation;
         View.FOV = DefaultFOV;
 
-    // 6. 调用父类实现，让 Feature 系统处理（包括 SpringArmFeature）
+    // 5. 调用父类实现
     View = Super::CalculateView_Implementation(DeltaTime);
-
-    // 7. 恢复原始 ArmLength（避免影响下一帧）
-    if (SpringArmFeature)
-    {
-        SpringArmFeature->SpringArm.TargetArmLength = OriginalCameraDistance;
-    }
 
     // 使用0-360度归一化，避免180/-180跳变问题
     View.CameraRotation = FNamiCameraMath::NormalizeRotatorTo360(View.CameraRotation);

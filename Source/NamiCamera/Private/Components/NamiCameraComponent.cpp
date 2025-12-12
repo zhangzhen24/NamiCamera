@@ -51,9 +51,9 @@ UNamiCameraComponent::UNamiCameraComponent(const FObjectInitializer &ObjectIniti
 
 	// 初始化平滑混合层状态
 	bHasInitializedCurrentView = false;
-	LocationBlendSpeed = 0.0f; // 默认瞬切
-	RotationBlendSpeed = 0.0f; // 默认瞬切
-	FOVBlendSpeed = 0.0f;	   // 默认瞬切
+	LocationBlendSpeed = 1000.0f;  // 默认平滑（1000 cm/s = 10 m/s）
+	RotationBlendSpeed = 360.0f;   // 默认平滑（360 度/s）
+	FOVBlendSpeed = 90.0f;         // 默认平滑（90 度/s）
 
 	bHasInitializedControl = false;
 }
@@ -767,23 +767,10 @@ void UNamiCameraComponent::ProcessGlobalFeatures(float DeltaTime, FNamiCameraPip
 	Context.BaseState = BaseState;
 	Context.bHasBaseState = true;
 
-	// 2. 收集玩家输入状态（如果有 Input Feature）
-	// TODO: 从 Input Feature 获取玩家输入状态
-	// 暂时使用 ControlRotation 作为玩家输入
-	FNamiCameraState PlayerInputState;
-	PlayerInputState.PivotRotation = InOutView.ControlRotation;
-	Context.PlayerInputState = PlayerInputState;
-	Context.bHasPlayerInputState = true;
-
-	// 3. 更新玩家输入信息
-	// TODO: 从 Input Feature 获取实际输入向量
-	// 暂时使用 ControlRotation 的变化来检测输入
-	Context.PlayerInput.Update(FVector2D::ZeroVector); // 简化实现
-
-	// 4. 保存 EffectView（用于 Feature 访问）
+	// 2. 保存 EffectView（用于 Feature 访问）
 	Context.EffectView = InOutView;
 
-	// 5. 应用全局 Feature（使用新接口）
+	// 3. 应用全局 Feature
 	for (UNamiCameraFeature* Feature : GlobalFeatures)
 	{
 		if (!Feature || !Feature->IsEnabled())
@@ -797,95 +784,8 @@ void UNamiCameraComponent::ProcessGlobalFeatures(float DeltaTime, FNamiCameraPip
 		Feature->ApplyToViewWithContext(InOutView, DeltaTime, Context);
 	}
 
-	// 6. 应用参数更新控制到最终视图
-	ApplyParamUpdateControl(Context, InOutView);
-
-	// 7. 更新 EffectView
+	// 4. 更新 EffectView
 	Context.EffectView = InOutView;
-}
-
-void UNamiCameraComponent::ApplyParamUpdateControl(const FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView)
-{
-	// 应用参数更新控制到视图
-	// 根据 Context.ParamUpdateControl 的模式，修改视图参数
-
-	// 旋转参数
-	if (Context.ParamUpdateControl.PivotRotation == ENamiCameraParamUpdateMode::PlayerInput)
-	{
-		// 使用玩家输入
-		if (Context.bHasPlayerInputState)
-		{
-			InOutView.ControlRotation = Context.PlayerInputState.PivotRotation;
-		}
-	}
-	else if (Context.ParamUpdateControl.PivotRotation == ENamiCameraParamUpdateMode::Frozen)
-	{
-		// 冻结：使用保存的值
-		if (Context.bHasPreservedValues)
-		{
-			InOutView.ControlRotation = Context.PreservedValues.PivotRotation;
-		}
-	}
-	else if (Context.ParamUpdateControl.PivotRotation == ENamiCameraParamUpdateMode::BaseValue)
-	{
-		// 基础值：使用基础状态
-		if (Context.bHasBaseState)
-		{
-			InOutView.ControlRotation = Context.BaseState.PivotRotation;
-		}
-	}
-
-	// 相机旋转
-	if (Context.ParamUpdateControl.CameraRotation == ENamiCameraParamUpdateMode::PlayerInput)
-	{
-		// 使用玩家输入
-		if (Context.bHasPlayerInputState)
-		{
-			InOutView.CameraRotation = Context.PlayerInputState.CameraRotation;
-		}
-	}
-	else if (Context.ParamUpdateControl.CameraRotation == ENamiCameraParamUpdateMode::Frozen)
-	{
-		// 冻结：使用保存的值
-		if (Context.bHasPreservedValues)
-		{
-			InOutView.CameraRotation = Context.PreservedValues.CameraRotation;
-		}
-	}
-	else if (Context.ParamUpdateControl.CameraRotation == ENamiCameraParamUpdateMode::BaseValue)
-	{
-		// 基础值：使用基础状态
-		if (Context.bHasBaseState)
-		{
-			InOutView.CameraRotation = Context.BaseState.CameraRotation;
-		}
-	}
-
-	// 位置参数
-	if (Context.ParamUpdateControl.PivotLocation == ENamiCameraParamUpdateMode::BaseValue)
-	{
-		if (Context.bHasBaseState)
-		{
-			InOutView.PivotLocation = Context.BaseState.PivotLocation;
-		}
-	}
-
-	if (Context.ParamUpdateControl.CameraLocation == ENamiCameraParamUpdateMode::BaseValue)
-	{
-		if (Context.bHasBaseState)
-		{
-			InOutView.CameraLocation = Context.BaseState.CameraLocation;
-		}
-	}
-
-	// FOV
-	if (Context.ParamUpdateControl.FieldOfView == ENamiCameraParamUpdateMode::BaseValue)
-	{
-		if (Context.bHasBaseState)
-		{
-			InOutView.FOV = Context.BaseState.FieldOfView;
-		}
-	}
 }
 
 void UNamiCameraComponent::ProcessControllerSync(float DeltaTime, const FNamiCameraPipelineContext& Context, const FNamiCameraView& InView)

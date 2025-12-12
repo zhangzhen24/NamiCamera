@@ -29,8 +29,6 @@ void FNamiCameraStateFlags::SetAllInput(bool bValue)
 	bArmLength = bValue;
 	bArmRotation = bValue;
 	bArmOffset = bValue;
-	// 控制旋转参数
-	bControlRotationOffset = bValue;
 	// 相机参数
 	bCameraLocationOffset = bValue;
 	bCameraRotationOffset = bValue;
@@ -45,9 +43,8 @@ void FNamiCameraStateFlags::SetAllOutput(bool bValue)
 
 bool FNamiCameraStateFlags::HasAnyInputFlag() const
 {
-	return bPivotLocation || bPivotRotation || 
-		bArmLength || bArmRotation || bArmOffset || 
-		bControlRotationOffset ||
+	return bPivotLocation || bPivotRotation ||
+		bArmLength || bArmRotation || bArmOffset ||
 		bCameraLocationOffset || bCameraRotationOffset || bFieldOfView;
 }
 
@@ -70,8 +67,6 @@ FNamiCameraStateFlags& FNamiCameraStateFlags::operator|=(const FNamiCameraStateF
 	bArmLength |= Other.bArmLength;
 	bArmRotation |= Other.bArmRotation;
 	bArmOffset |= Other.bArmOffset;
-	// 控制旋转参数
-	bControlRotationOffset |= Other.bControlRotationOffset;
 	// 相机参数
 	bCameraLocationOffset |= Other.bCameraLocationOffset;
 	bCameraRotationOffset |= Other.bCameraRotationOffset;
@@ -99,8 +94,6 @@ FNamiCameraStateFlags FNamiCameraStateFlags::operator&(const FNamiCameraStateFla
 	Result.bArmLength = bArmLength && Other.bArmLength;
 	Result.bArmRotation = bArmRotation && Other.bArmRotation;
 	Result.bArmOffset = bArmOffset && Other.bArmOffset;
-	// 控制旋转参数
-	Result.bControlRotationOffset = bControlRotationOffset && Other.bControlRotationOffset;
 	// 相机参数
 	Result.bCameraLocationOffset = bCameraLocationOffset && Other.bCameraLocationOffset;
 	Result.bCameraRotationOffset = bCameraRotationOffset && Other.bCameraRotationOffset;

@@ -90,25 +90,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Arm")
 	FVector ArmOffset;
 	
-	// ==================== 控制旋转参数 ====================
-	// 代表玩家的视角意图，可被玩家输入打断
-	
-	/** 
-	 * 控制旋转偏移（玩家视角意图）
-	 * 
-	 * 修改 ControlRotation，代表临时改变玩家"想看哪里"
-	 * 区别于 CameraRotationOffset：
-	 * - ControlRotationOffset：修改玩家视角意图，可被玩家输入打断
-	 * - CameraRotationOffset：纯视觉效果，不受玩家输入影响
-	 * 
-	 * 适用场景：
-	 * - 技能释放时引导玩家看向目标
-	 * - 演出镜头的视角控制
-	 * - 过场动画的强制视角
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Control")
-	FRotator ControlRotationOffset;
-	
 	// ==================== 相机参数 ====================
 	// 直接作用于相机的参数（在吊臂计算之后应用）
 	
@@ -227,7 +208,6 @@ public:
 	void SetArmLength(float InValue);
 	void SetArmRotation(const FRotator& InValue);
 	void SetArmOffset(const FVector& InValue);
-	void SetControlRotationOffset(const FRotator& InValue);
 	void SetCameraLocationOffset(const FVector& InValue);
 	void SetCameraRotationOffset(const FRotator& InValue);
 	void SetFieldOfView(float InValue);
@@ -241,7 +221,6 @@ public:
 	void AddArmLength(float InDelta);
 	void AddArmRotation(const FRotator& InDelta);
 	void AddArmOffset(const FVector& InDelta);
-	void AddControlRotationOffset(const FRotator& InDelta);
 	void AddCameraLocationOffset(const FVector& InDelta);
 	void AddCameraRotationOffset(const FRotator& InDelta);
 	void AddFieldOfView(float InDelta);
