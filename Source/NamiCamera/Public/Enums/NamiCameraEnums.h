@@ -87,12 +87,75 @@ enum class ENamiCameraEndBehavior : uint8
 {
 	/** 混合回去：平滑过渡回原始状态 */
 	BlendBack UMETA(DisplayName = "混合回去"),
-	
+
 	/** 立即结束：无过渡，立即切回 */
 	ForceEnd UMETA(DisplayName = "立即结束"),
-	
+
 	/** 保持效果：不结束，保持当前状态（需手动结束） */
 	Stay UMETA(DisplayName = "保持效果"),
 };
 
+/**
+ * 相机调整混合模式
+ * 用于 CameraAdjust 系统，定义参数如何与基础值混合
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraAdjustBlendMode : uint8
+{
+	/** 叠加模式：在当前值基础上增加/减少
+	 *  FOV = BaseFOV + (Offset * Weight)
+	 */
+	Additive UMETA(DisplayName = "叠加"),
 
+	/** 覆盖模式：按权重插值到目标值
+	 *  FOV = Lerp(BaseFOV, TargetFOV, Weight)
+	 */
+	Override UMETA(DisplayName = "覆盖"),
+
+	/** 乘法模式：乘以系数
+	 *  FOV = BaseFOV * Lerp(1.0, Multiplier, Weight)
+	 */
+	Multiplicative UMETA(DisplayName = "乘法"),
+};
+
+/**
+ * 相机调整曲线输入源
+ * 用于曲线驱动的动态参数变化
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraAdjustInputSource : uint8
+{
+	/** 不使用曲线，使用固定值 */
+	None UMETA(DisplayName = "无"),
+
+	/** 角色移动速度 */
+	MoveSpeed UMETA(DisplayName = "移动速度"),
+
+	/** 视角旋转速度 */
+	LookSpeed UMETA(DisplayName = "视角速度"),
+
+	/** 激活后经过的时间 */
+	Time UMETA(DisplayName = "时间"),
+
+	/** 自定义输入（通过 SetCustomInput 设置） */
+	Custom UMETA(DisplayName = "自定义"),
+};
+
+/**
+ * 相机调整状态
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraAdjustState : uint8
+{
+	/** 未激活 */
+	Inactive UMETA(DisplayName = "未激活"),
+
+	/** 混合进入中 */
+	BlendingIn UMETA(DisplayName = "混合进入"),
+
+	/** 完全激活 */
+	Active UMETA(DisplayName = "激活"),
+
+	/** 混合退出中 */
+	BlendingOut UMETA(DisplayName = "混合退出"),
+};

@@ -68,19 +68,6 @@
 		} \
 	} while(0)
 
-// ========== ANS日志 ==========
-#define NAMI_LOG_ANS(Verbosity, Format, ...) \
-	do { \
-		if (UNamiCameraSettings::ShouldLogANS()) \
-		{ \
-			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
-		} \
-		if (UNamiCameraSettings::ShouldLogANSOnScreen()) \
-		{ \
-			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
-		} \
-	} while(0)
-
 // ========== 组件日志 ==========
 #define NAMI_LOG_COMPONENT(Verbosity, Format, ...) \
 	do { \
@@ -94,45 +81,6 @@
 		} \
 	} while(0)
 
-// ========== 模式日志 ==========
-#define NAMI_LOG_MODE(Verbosity, Format, ...) \
-	do { \
-		if (UNamiCameraSettings::ShouldLogMode()) \
-		{ \
-			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
-		} \
-		if (UNamiCameraSettings::ShouldLogModeOnScreen()) \
-		{ \
-			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
-		} \
-	} while(0)
-
-// ========== 库函数日志 ==========
-#define NAMI_LOG_LIBRARY(Verbosity, Format, ...) \
-	do { \
-		if (UNamiCameraSettings::ShouldLogLibrary()) \
-		{ \
-			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
-		} \
-		if (UNamiCameraSettings::ShouldLogLibraryOnScreen()) \
-		{ \
-			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
-		} \
-	} while(0)
-
-// ========== 混合探针日志 ==========
-#define NAMI_LOG_BLEND_PROBE(Verbosity, Format, ...) \
-	do { \
-		if (UNamiCameraSettings::ShouldLogBlendProbe()) \
-		{ \
-			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
-		} \
-		if (UNamiCameraSettings::ShouldLogBlendProbeOnScreen()) \
-		{ \
-			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
-		} \
-	} while(0)
-
 // ========== 警告日志 ==========
 #define NAMI_LOG_WARNING(Format, ...) \
 	do { \
@@ -141,29 +89,6 @@
 			NAMI_LOG_TO_LOG(Warning, Format, ##__VA_ARGS__); \
 		} \
 		if (UNamiCameraSettings::ShouldLogWarningOnScreen()) \
-		{ \
-			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
-		} \
-	} while(0)
-
-// ========== 构图日志（使用现有开关，暂不支持屏幕输出）==========
-#define NAMI_LOG_FRAMING(Verbosity, Format, ...) \
-	do { \
-		const UNamiCameraSettings* FramingLogSettings = UNamiCameraSettings::Get(); \
-		if (FramingLogSettings && FramingLogSettings->bEnableFramingLog) \
-		{ \
-			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
-		} \
-	} while(0)
-
-// ========== 输入打断日志 ==========
-#define NAMI_LOG_INPUT_INTERRUPT(Verbosity, Format, ...) \
-	do { \
-		if (UNamiCameraSettings::ShouldLogInputInterrupt()) \
-		{ \
-			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
-		} \
-		if (UNamiCameraSettings::ShouldLogInputInterruptOnScreen()) \
 		{ \
 			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \

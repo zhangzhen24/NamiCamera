@@ -7,12 +7,14 @@
 #include "Structs/Mode/NamiCameraModeHandle.h"
 #include "Structs/Mode/NamiCameraModeStackEntry.h"
 #include "Structs/Pipeline/NamiCameraPipelineContext.h"
+#include "Adjusts/NamiCameraAdjustParams.h"
 #include "Camera/CameraComponent.h"
 #include "Modes/NamiCameraModeBase.h"
 #include "NamiCameraComponent.generated.h"
 
 // 前向声明
 class ANamiPlayerCameraManager;
+class UNamiCameraAdjust;
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPushCameraModeDelegate, UNamiCameraModeBase *, CameraModeInstance);
@@ -185,6 +187,83 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Nami Camera|Features")
 	TArray<UNamiCameraFeature*> GetFeaturesByTags(const FGameplayTagContainer& TagContainer) const;
 
+	// ========== Camera Adjust ==========
+
+	/**
+	 * 推送相机调整器（通过类创建实例）
+	 * @param AdjustClass 调整器类
+	 * @return 创建的调整器实例
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Adjust")
+	UNamiCameraAdjust* PushCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass);
+
+	/**
+	 * 推送相机调整器（使用已存在的实例）
+	 * @param AdjustInstance 调整器实例
+	 * @return 是否成功推送
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Adjust")
+	bool PushCameraAdjustInstance(UNamiCameraAdjust* AdjustInstance);
+
+	/**
+	 * 移除相机调整器
+	 * @param AdjustInstance 要移除的调整器
+	 * @param bForceImmediate 是否立即移除（跳过BlendOut）
+	 * @return 是否成功移除
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Adjust")
+	bool PopCameraAdjust(UNamiCameraAdjust* AdjustInstance, bool bForceImmediate = false);
+
+	/**
+	 * 通过类移除相机调整器
+	 * @param AdjustClass 调整器类
+	 * @param bForceImmediate 是否立即移除
+	 * @return 是否成功移除
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Adjust")
+	bool PopCameraAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass, bool bForceImmediate = false);
+
+	/**
+	 * 通过类型查找相机调整器
+	 * @tparam T 调整器类型
+	 * @return 找到的调整器，如果不存在则返回nullptr
+	 */
+	template<typename T>
+	T* FindCameraAdjust() const
+	{
+		for (UNamiCameraAdjust* Adjust : CameraAdjustStack)
+		{
+			if (T* TypedAdjust = Cast<T>(Adjust))
+			{
+				return TypedAdjust;
+			}
+		}
+		return nullptr;
+	}
+
+	/**
+	 * 通过类查找相机调整器
+	 * @param AdjustClass 调整器类
+	 * @return 找到的调整器
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nami Camera|Adjust")
+	UNamiCameraAdjust* FindCameraAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass) const;
+
+	/**
+	 * 获取所有激活的相机调整器
+	 * @return 调整器列表
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nami Camera|Adjust")
+	const TArray<UNamiCameraAdjust*>& GetCameraAdjusts() const;
+
+	/**
+	 * 检查是否有指定类型的调整器处于激活状态
+	 * @param AdjustClass 调整器类
+	 * @return 是否存在
+	 */
+	UFUNCTION(BlueprintPure, Category = "Nami Camera|Adjust")
+	bool HasCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass) const;
+
 protected:
 	/** 默认相机模式 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Settings")
@@ -248,6 +327,32 @@ protected:
 	 * 应用所有全局 Features 到视图
 	 */
 	void ProcessGlobalFeatures(float DeltaTime, FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView);
+
+	/**
+	 * 阶段 2.5：相机调整层
+	 * 处理所有 CameraAdjust 的参数修改
+	 */
+	void ProcessCameraAdjusts(float DeltaTime, FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView);
+
+	/**
+	 * 计算所有激活的 CameraAdjust 的合并参数
+	 * @param DeltaTime 帧时间
+	 * @param CurrentArmRotation 当前臂旋转（用于 Override 模式计算）
+	 * @return 合并后的调整参数
+	 */
+	FNamiCameraAdjustParams CalculateCombinedAdjustParams(float DeltaTime, const FRotator& CurrentArmRotation);
+
+	/**
+	 * 将调整参数应用到视图
+	 * @param Params 调整参数
+	 * @param InOutView 要修改的视图
+	 */
+	void ApplyAdjustParamsToView(const FNamiCameraAdjustParams& Params, FNamiCameraView& InOutView);
+
+	/**
+	 * 清理已完全停用的调整器
+	 */
+	void CleanupInactiveCameraAdjusts();
 
 	/**
 	 * 阶段 3：控制器同步层
@@ -319,4 +424,8 @@ private:
 	/** 全局 Feature 列表（独立于 Mode 管理） */
 	UPROPERTY()
 	TArray<TObjectPtr<UNamiCameraFeature>> GlobalFeatures;
+
+	/** 相机调整器堆栈（按优先级排序） */
+	UPROPERTY()
+	TArray<TObjectPtr<UNamiCameraAdjust>> CameraAdjustStack;
 };

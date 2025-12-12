@@ -20,12 +20,6 @@ bool UNamiCameraSettings::ShouldEnableStackDebugLog()
 	return Settings && Settings->bEnableStackDebugLog;
 }
 
-bool UNamiCameraSettings::ShouldEnableFramingDebug()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableFramingDebug;
-}
-
 // ========== 日志开关检查方法 ==========
 
 bool UNamiCameraSettings::ShouldLogEffect()
@@ -40,46 +34,16 @@ bool UNamiCameraSettings::ShouldLogStateCalculation()
 	return Settings && Settings->bEnableStateCalculationLog;
 }
 
-bool UNamiCameraSettings::ShouldLogANS()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableANSLog;
-}
-
 bool UNamiCameraSettings::ShouldLogComponent()
 {
 	const UNamiCameraSettings* Settings = Get();
 	return Settings && Settings->bEnableComponentLog;
 }
 
-bool UNamiCameraSettings::ShouldLogMode()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableModeLog;
-}
-
-bool UNamiCameraSettings::ShouldLogLibrary()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableLibraryLog;
-}
-
-bool UNamiCameraSettings::ShouldLogBlendProbe()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableBlendProbeLog;
-}
-
 bool UNamiCameraSettings::ShouldLogWarning()
 {
 	const UNamiCameraSettings* Settings = Get();
 	return Settings && Settings->bEnableWarningLog;
-}
-
-bool UNamiCameraSettings::ShouldLogInputInterrupt()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableInputInterruptLog;
 }
 
 bool UNamiCameraSettings::ShouldLogCameraInfo()
@@ -153,46 +117,16 @@ bool UNamiCameraSettings::ShouldLogStateCalculationOnScreen()
 	return Settings && Settings->bEnableStateCalculationLogOnScreen;
 }
 
-bool UNamiCameraSettings::ShouldLogANSOnScreen()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableANSLogOnScreen;
-}
-
 bool UNamiCameraSettings::ShouldLogComponentOnScreen()
 {
 	const UNamiCameraSettings* Settings = Get();
 	return Settings && Settings->bEnableComponentLogOnScreen;
 }
 
-bool UNamiCameraSettings::ShouldLogModeOnScreen()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableModeLogOnScreen;
-}
-
-bool UNamiCameraSettings::ShouldLogLibraryOnScreen()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableLibraryLogOnScreen;
-}
-
-bool UNamiCameraSettings::ShouldLogBlendProbeOnScreen()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableBlendProbeLogOnScreen;
-}
-
 bool UNamiCameraSettings::ShouldLogWarningOnScreen()
 {
 	const UNamiCameraSettings* Settings = Get();
 	return Settings && Settings->bEnableWarningLogOnScreen;
-}
-
-bool UNamiCameraSettings::ShouldLogInputInterruptOnScreen()
-{
-	const UNamiCameraSettings* Settings = Get();
-	return Settings && Settings->bEnableInputInterruptLogOnScreen;
 }
 
 bool UNamiCameraSettings::ShouldLogCameraInfoOnScreen()

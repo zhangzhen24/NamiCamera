@@ -35,31 +35,6 @@ public:
 			ToolTip = "Debug日志在屏幕上显示的颜色"))
 	FLinearColor DebugLogTextColor{FLinearColor::Green};
 
-	// ========== 构图/可视化 Debug ==========
-
-	/** 是否启用全局构图可视化。全局开关，开启后允许绘制构图框/安全区等可视化。需局部开关同时为真才会绘制。 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Framing",
-		meta = (ToolTip = "全局开关，开启后允许绘制构图框/安全区等可视化；\n需局部开关同时为真才会绘制"))
-	bool bEnableFramingDebug{false};
-
-	/** 构图可视化的持续时间（秒，0=仅一帧）。绘制持续时间，0表示只绘制一帧。 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Framing",
-		meta = (EditCondition = "bEnableFramingDebug",
-			ToolTip = "绘制持续时间（秒）；0 表示只绘制一帧"))
-	float FramingDebugDuration{0.0f};
-
-	/** 构图可视化线宽。构图可视化的绘制线宽。 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Framing",
-		meta = (EditCondition = "bEnableFramingDebug",
-			ClampMin = "0.5", ClampMax = "8.0",
-			ToolTip = "构图可视化的绘制线宽"))
-	float FramingDebugThickness{2.0f};
-
-	/** 是否启用构图日志。打印构图中心/距离等日志，谨慎开启，避免刷屏。 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Framing",
-		meta = (ToolTip = "打印构图中心/距离等日志（谨慎开启，避免刷屏）"))
-	bool bEnableFramingLog{false};
-
 	// ========== 日志分类开关 ==========
 
 	/** 是否启用效果/修改器日志输出到Log（激活/停用/混合等） */
@@ -86,18 +61,6 @@ public:
 			ToolTip = "将State计算过程、混合过程等详细日志输出到屏幕"))
 	bool bEnableStateCalculationLogOnScreen{false};
 
-	/** 是否启用ANS日志输出到Log（动画通知相关） */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (
-			ToolTip = "将动画通知状态（AnimNotifyState）相关日志输出到Log窗口"))
-	bool bEnableANSLog{false};
-
-	/** 是否启用ANS日志输出到屏幕 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
-		meta = (
-			ToolTip = "将动画通知状态（AnimNotifyState）相关日志输出到屏幕"))
-	bool bEnableANSLogOnScreen{false};
-
 	/** 是否启用组件日志输出到Log（Component相关） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
 		meta = (
@@ -110,42 +73,6 @@ public:
 			ToolTip = "将相机组件相关日志输出到屏幕"))
 	bool bEnableComponentLogOnScreen{false};
 
-	/** 是否启用模式日志输出到Log（Mode相关） */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (
-			ToolTip = "将相机模式相关日志输出到Log窗口"))
-	bool bEnableModeLog{false};
-
-	/** 是否启用模式日志输出到屏幕 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
-		meta = (
-			ToolTip = "将相机模式相关日志输出到屏幕"))
-	bool bEnableModeLogOnScreen{false};
-
-	/** 是否启用库函数日志输出到Log（Library相关） */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (
-			ToolTip = "将库函数调用相关日志输出到Log窗口"))
-	bool bEnableLibraryLog{false};
-
-	/** 是否启用库函数日志输出到屏幕 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
-		meta = (
-			ToolTip = "将库函数调用相关日志输出到屏幕"))
-	bool bEnableLibraryLogOnScreen{false};
-
-	/** 是否启用混合探针日志输出到Log（调试混合过程） */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (
-			ToolTip = "将混合权重探针日志（EffectBlendProbe/StateBlendProbe）输出到Log窗口，用于调试混合过程"))
-	bool bEnableBlendProbeLog{false};
-
-	/** 是否启用混合探针日志输出到屏幕 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
-		meta = (
-			ToolTip = "将混合权重探针日志（EffectBlendProbe/StateBlendProbe）输出到屏幕，用于调试混合过程"))
-	bool bEnableBlendProbeLogOnScreen{false};
-
 	/** 是否启用警告日志输出到Log（Warning级别） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
 		meta = (
@@ -157,18 +84,6 @@ public:
 		meta = (
 			ToolTip = "将警告级别日志输出到屏幕\n• 按需开启，用于调试警告信息"))
 	bool bEnableWarningLogOnScreen{false};
-
-	/** 是否启用输入打断日志输出到Log（角度累积、打断触发等） */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
-		meta = (
-			ToolTip = "将输入打断相关日志输出到Log窗口\n• 包括角度累积过程、打断触发、衰减过程等\n• 用于调试玩家输入打断相机效果的逻辑\n• 建议在调试打断功能时开启"))
-	bool bEnableInputInterruptLog{false};
-
-	/** 是否启用输入打断日志输出到屏幕 */
-	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
-		meta = (
-			ToolTip = "将输入打断相关日志输出到屏幕\n• 包括角度累积过程、打断触发、衰减过程等\n• 用于调试玩家输入打断相机效果的逻辑\n• 建议在调试打断功能时开启"))
-	bool bEnableInputInterruptLogOnScreen{false};
 
 	/** 是否启用相机信息日志输出到Log（关键相机参数） */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
@@ -265,9 +180,6 @@ public:
 	/** 检查是否应该启用堆栈Debug日志 */
 	static bool ShouldEnableStackDebugLog();
 
-	/** 检查是否全局启用构图可视化 */
-	static bool ShouldEnableFramingDebug();
-
 	// ========== 日志开关检查方法 ==========
 
 	/** 检查是否应该打印效果日志 */
@@ -276,29 +188,17 @@ public:
 	/** 检查是否应该打印State计算日志 */
 	static bool ShouldLogStateCalculation();
 
-	/** 检查是否应该打印ANS日志 */
-	static bool ShouldLogANS();
-
 	/** 检查是否应该打印组件日志 */
 	static bool ShouldLogComponent();
-
-	/** 检查是否应该打印模式日志 */
-	static bool ShouldLogMode();
-
-	/** 检查是否应该打印库函数日志 */
-	static bool ShouldLogLibrary();
-
-	/** 检查是否应该打印混合探针日志 */
-	static bool ShouldLogBlendProbe();
 
 	/** 检查是否应该打印警告日志 */
 	static bool ShouldLogWarning();
 
-	/** 检查是否应该打印输入打断日志 */
-	static bool ShouldLogInputInterrupt();
-
 	/** 检查是否应该打印相机信息日志 */
 	static bool ShouldLogCameraInfo();
+
+	/** 检查是否应该打印模式混合日志 */
+	static bool ShouldLogModeBlend();
 
 	// ========== 屏幕日志检查方法 ==========
 
@@ -308,32 +208,14 @@ public:
 	/** 检查是否应该将State计算日志输出到屏幕 */
 	static bool ShouldLogStateCalculationOnScreen();
 
-	/** 检查是否应该将ANS日志输出到屏幕 */
-	static bool ShouldLogANSOnScreen();
-
 	/** 检查是否应该将组件日志输出到屏幕 */
 	static bool ShouldLogComponentOnScreen();
-
-	/** 检查是否应该将模式日志输出到屏幕 */
-	static bool ShouldLogModeOnScreen();
-
-	/** 检查是否应该将库函数日志输出到屏幕 */
-	static bool ShouldLogLibraryOnScreen();
-
-	/** 检查是否应该将混合探针日志输出到屏幕 */
-	static bool ShouldLogBlendProbeOnScreen();
 
 	/** 检查是否应该将警告日志输出到屏幕 */
 	static bool ShouldLogWarningOnScreen();
 
-	/** 检查是否应该将输入打断日志输出到屏幕 */
-	static bool ShouldLogInputInterruptOnScreen();
-
 	/** 检查是否应该将相机信息日志输出到屏幕 */
 	static bool ShouldLogCameraInfoOnScreen();
-
-	/** 检查是否应该打印模式混合日志 */
-	static bool ShouldLogModeBlend();
 
 	/** 检查是否应该将模式混合日志输出到屏幕 */
 	static bool ShouldLogModeBlendOnScreen();
