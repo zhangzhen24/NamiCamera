@@ -71,21 +71,10 @@ FNamiCameraAdjustParams UNamiCameraAdjust::GetWeightedAdjustParams(float DeltaTi
 	// 应用曲线驱动的参数
 	ApplyCurveDrivenParams(Params);
 
-	// 根据混合模式和权重处理参数
-	switch (BlendMode)
-	{
-	case ENamiCameraAdjustBlendMode::Additive:
-	case ENamiCameraAdjustBlendMode::Multiplicative:
-		// Additive和Multiplicative模式：缩放偏移值
-		return Params.ScaleByWeight(CurrentBlendWeight);
-
-	case ENamiCameraAdjustBlendMode::Override:
-		// Override模式：参数不变，权重在应用时处理
-		return Params;
-
-	default:
-		return Params.ScaleByWeight(CurrentBlendWeight);
-	}
+	// 按每个参数的 BlendMode 进行缩放
+	// Additive 模式的参数会被权重缩放
+	// Override 模式的参数保持不变（delta 在 CalculateCombinedAdjustParams 中计算）
+	return Params.ScaleAdditiveParamsByWeight(CurrentBlendWeight);
 }
 
 void UNamiCameraAdjust::RequestDeactivate(bool bForceImmediate)
@@ -129,11 +118,9 @@ UNamiCameraComponent* UNamiCameraAdjust::GetOwnerComponent() const
 
 void UNamiCameraAdjust::CacheArmRotationTarget()
 {
-	// 只在 Override 模式下缓存目标臂旋转
-	if (BlendMode != ENamiCameraAdjustBlendMode::Override)
-	{
-		return;
-	}
+	// 总是缓存目标臂旋转
+	// 只有当 ArmRotation 参数的 BlendMode 为 Override 时才会使用
+	// 在 CalculateCombinedAdjustParams 中会根据每个参数的 BlendMode 决定是否使用此值
 
 	UNamiCameraComponent* CameraComp = GetOwnerComponent();
 	if (!CameraComp)

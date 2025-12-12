@@ -1129,6 +1129,11 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 {
 	FNamiCameraAdjustParams CombinedParams;
 
+	// 使用四元数累积臂旋转偏移（避免欧拉角插值问题）
+	FQuat CombinedArmRotationQuat = FQuat::Identity;
+	FQuat CurrentArmQuat = CurrentArmRotation.Quaternion();
+	bool bHasArmRotation = false;
+
 	for (UNamiCameraAdjust* Adjust : CameraAdjustStack)
 	{
 		if (!IsValid(Adjust))
@@ -1140,39 +1145,86 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 		FNamiCameraAdjustParams AdjustParams = Adjust->GetWeightedAdjustParams(DeltaTime);
 
 		// 跳过权重为0的调整器
-		if (Adjust->GetCurrentBlendWeight() <= 0.f)
+		float Weight = Adjust->GetCurrentBlendWeight();
+		if (Weight <= 0.f)
 		{
 			continue;
 		}
 
-		// 根据混合模式合并参数
-		switch (Adjust->BlendMode)
+		// 按每个参数的 BlendMode 分别处理
+
+		// FOV
+		if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::FOV))
 		{
-		case ENamiCameraAdjustBlendMode::Additive:
-			// 叠加模式：直接累加偏移值
-			CombinedParams = FNamiCameraAdjustParams::Combine(CombinedParams, AdjustParams);
-			break;
-
-		case ENamiCameraAdjustBlendMode::Override:
-			// 覆盖模式：对于臂旋转，从当前位置混合到缓存的世界目标
-			if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::ArmRotation))
-			{
-				// 计算从当前臂旋转到目标的偏移
-				FRotator TargetArmRot = Adjust->GetCachedWorldArmRotationTarget();
-				FRotator Delta = TargetArmRot - CurrentArmRotation;
-				Delta.Normalize();
-				// 按权重缩放偏移
-				AdjustParams.ArmRotationOffset = Delta * Adjust->GetCurrentBlendWeight();
-			}
-			// 其他参数使用 Lerp 处理
-			CombinedParams = FNamiCameraAdjustParams::Combine(CombinedParams, AdjustParams);
-			break;
-
-		case ENamiCameraAdjustBlendMode::Multiplicative:
-			// 乘法模式：已在ScaleByWeight中处理
-			CombinedParams = FNamiCameraAdjustParams::Combine(CombinedParams, AdjustParams);
-			break;
+			// 目前 FOV 只支持 Additive 模式，直接累加
+			CombinedParams.FOVOffset += AdjustParams.FOVOffset;
+			CombinedParams.FOVBlendMode = AdjustParams.FOVBlendMode;
+			CombinedParams.MarkFOVModified();
 		}
+
+		// ArmLength
+		if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::TargetArmLength))
+		{
+			CombinedParams.TargetArmLengthOffset += AdjustParams.TargetArmLengthOffset;
+			CombinedParams.ArmLengthBlendMode = AdjustParams.ArmLengthBlendMode;
+			CombinedParams.MarkTargetArmLengthModified();
+		}
+
+		// ArmRotation - 使用四元数进行混合计算
+		if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::ArmRotation))
+		{
+			bHasArmRotation = true;
+
+			if (AdjustParams.ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Override)
+			{
+				// Override 模式：使用四元数 Slerp 从当前位置混合到目标
+				FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
+				// Slerp 计算从当前到目标的插值旋转
+				FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, Weight);
+				// 计算相对于当前的偏移四元数
+				FQuat OffsetQuat = InterpolatedQuat * CurrentArmQuat.Inverse();
+				// 组合到累积的旋转四元数
+				CombinedArmRotationQuat = CombinedArmRotationQuat * OffsetQuat;
+			}
+			else
+			{
+				// Additive 模式：将偏移转换为四元数后组合（偏移已被权重缩放）
+				FQuat AdditiveQuat = AdjustParams.ArmRotationOffset.Quaternion();
+				CombinedArmRotationQuat = CombinedArmRotationQuat * AdditiveQuat;
+			}
+			CombinedParams.ArmRotationBlendMode = AdjustParams.ArmRotationBlendMode;
+		}
+
+		// CameraOffset
+		if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::CameraLocationOffset))
+		{
+			CombinedParams.CameraLocationOffset += AdjustParams.CameraLocationOffset;
+			CombinedParams.CameraOffsetBlendMode = AdjustParams.CameraOffsetBlendMode;
+			CombinedParams.MarkCameraLocationOffsetModified();
+		}
+
+		// CameraRotation
+		if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::CameraRotationOffset))
+		{
+			CombinedParams.CameraRotationOffset += AdjustParams.CameraRotationOffset;
+			CombinedParams.CameraRotationBlendMode = AdjustParams.CameraRotationBlendMode;
+			CombinedParams.MarkCameraRotationOffsetModified();
+		}
+
+		// PivotOffset
+		if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::PivotOffset))
+		{
+			CombinedParams.PivotOffset += AdjustParams.PivotOffset;
+			CombinedParams.PivotOffsetBlendMode = AdjustParams.PivotOffsetBlendMode;
+			CombinedParams.MarkPivotOffsetModified();
+		}
+	}
+
+	// 将四元数转换回欧拉角偏移
+	if (bHasArmRotation)
+	{
+		CombinedParams.ArmRotationOffset = CombinedArmRotationQuat.Rotator();
+		CombinedParams.MarkArmRotationModified();
 	}
 
 	return CombinedParams;
@@ -1209,7 +1261,7 @@ void UNamiCameraComponent::ApplyAdjustParamsToView(const FNamiCameraAdjustParams
 		InOutView.PivotLocation += Params.PivotOffset;
 	}
 
-	// 应用臂旋转偏移（按 Yaw -> Pitch -> Roll 顺序）
+	// 应用臂旋转偏移（使用四元数进行球面旋转）
 	if (Params.HasFlag(ENamiCameraAdjustModifiedFlags::ArmRotation))
 	{
 		// 重新计算相机位置（基于臂旋转变化，绕Pivot点旋转）
@@ -1217,16 +1269,9 @@ void UNamiCameraComponent::ApplyAdjustParamsToView(const FNamiCameraAdjustParams
 		float ArmLength = ArmDir.Size();
 		if (ArmLength > KINDA_SMALL_NUMBER)
 		{
-			// 构建旋转四元数，按 Yaw -> Pitch -> Roll 顺序应用
-			// Yaw: 绕世界 Z 轴（Up）旋转 - 水平环绕角色
-			FQuat YawQuat(FVector::UpVector, FMath::DegreesToRadians(Params.ArmRotationOffset.Yaw));
-			// Pitch: 绕世界 Y 轴（Right）旋转 - 上下调整
-			FQuat PitchQuat(FVector::RightVector, FMath::DegreesToRadians(Params.ArmRotationOffset.Pitch));
-			// Roll: 绕世界 X 轴（Forward）旋转 - 倾斜
-			FQuat RollQuat(FVector::ForwardVector, FMath::DegreesToRadians(Params.ArmRotationOffset.Roll));
-
-			// 组合旋转: 四元数乘法从右到左应用，所以 Roll * Pitch * Yaw 会按 Yaw -> Pitch -> Roll 顺序执行
-			FQuat CombinedRotation = RollQuat * PitchQuat * YawQuat;
+			// 直接使用 ArmRotationOffset 的四元数表示
+			// 这与 CalculateCombinedAdjustParams 中的四元数混合计算兼容
+			FQuat CombinedRotation = Params.ArmRotationOffset.Quaternion();
 
 			// 应用旋转到臂方向
 			FVector NewArmDir = CombinedRotation.RotateVector(ArmDir);

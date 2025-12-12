@@ -103,19 +103,14 @@ UENUM(BlueprintType)
 enum class ENamiCameraAdjustBlendMode : uint8
 {
 	/** 叠加模式：在当前值基础上增加/减少
-	 *  FOV = BaseFOV + (Offset * Weight)
+	 *  Value = BaseValue + (Offset * Weight)
 	 */
 	Additive UMETA(DisplayName = "叠加"),
 
 	/** 覆盖模式：按权重插值到目标值
-	 *  FOV = Lerp(BaseFOV, TargetFOV, Weight)
+	 *  Value = Lerp(BaseValue, Target, Weight)
 	 */
 	Override UMETA(DisplayName = "覆盖"),
-
-	/** 乘法模式：乘以系数
-	 *  FOV = BaseFOV * Lerp(1.0, Multiplier, Weight)
-	 */
-	Multiplicative UMETA(DisplayName = "乘法"),
 };
 
 /**

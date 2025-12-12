@@ -17,7 +17,7 @@ class UNamiCameraComponent;
  * CameraAdjust 是一个可堆叠的相机属性修改器，支持：
  * - 生命周期管理：OnActivate -> Tick -> OnDeactivate
  * - 混合控制：BlendIn/BlendOut 平滑过渡
- * - 多种混合模式：Additive/Override/Multiplicative
+ * - 混合模式：Additive（叠加）/ Override（覆盖）
  * - 曲线驱动：根据速度、时间等动态调整参数
  *
  * 使用方式：

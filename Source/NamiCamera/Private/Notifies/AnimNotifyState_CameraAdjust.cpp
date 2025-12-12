@@ -9,29 +9,10 @@
 
 UAnimNotifyState_CameraAdjust::UAnimNotifyState_CameraAdjust()
 {
-	// 默认值
-	bEnableFOV = false;
-	FOVOffset = 0.f;
-
-	bEnableArmLength = false;
-	ArmLengthOffset = 0.f;
-
-	bEnableArmRotation = false;
-	ArmRotationOffset = FRotator::ZeroRotator;
-
-	bEnableCameraOffset = false;
-	CameraLocationOffset = FVector::ZeroVector;
-
-	bEnableCameraRotation = false;
-	CameraRotationOffset = FRotator::ZeroRotator;
-
-	bEnablePivotOffset = false;
-	PivotOffset = FVector::ZeroVector;
-
+	// 默认值 - 包装结构体默认都是禁用状态
 	BlendInTime = 0.15f;
 	BlendOutTime = 0.2f;
 	BlendType = ENamiCameraBlendType::EaseInOut;
-	BlendMode = ENamiCameraAdjustBlendMode::Additive;
 	Priority = 100;
 }
 
@@ -69,14 +50,12 @@ void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp
 	Adjust->BlendInTime = BlendInTime;
 	Adjust->BlendOutTime = BlendOutTime;
 	Adjust->BlendType = BlendType;
-	Adjust->BlendMode = BlendMode;
 	Adjust->Priority = Priority;
 
-	// 对于 Override 模式，设置臂旋转目标值
-	// ArmRotationOffset 在 Override 模式下被解释为相对于角色朝向的目标位置
-	if (BlendMode == ENamiCameraAdjustBlendMode::Override && bEnableArmRotation)
+	// 对于 ArmRotation Override 模式，设置臂旋转目标值
+	if (ArmRotation.bEnabled && ArmRotation.BlendMode == ENamiCameraAdjustBlendMode::Override)
 	{
-		Adjust->ArmRotationTarget = ArmRotationOffset;
+		Adjust->ArmRotationTarget = ArmRotation.Value;
 	}
 
 	// 构建并设置调整参数
@@ -123,27 +102,34 @@ FString UAnimNotifyState_CameraAdjust::GetNotifyName_Implementation() const
 	// 构建描述性名称
 	TArray<FString> ActiveAdjustments;
 
-	if (bEnableFOV)
+	if (FOV.bEnabled)
 	{
-		ActiveAdjustments.Add(FString::Printf(TEXT("FOV%+.0f"), FOVOffset));
+		ActiveAdjustments.Add(FString::Printf(TEXT("FOV%+.0f"), FOV.Value));
 	}
-	if (bEnableArmLength)
+	if (ArmLength.bEnabled)
 	{
-		ActiveAdjustments.Add(FString::Printf(TEXT("Arm%+.0f"), ArmLengthOffset));
+		ActiveAdjustments.Add(FString::Printf(TEXT("Arm%+.0f"), ArmLength.Value));
 	}
-	if (bEnableArmRotation)
+	if (ArmRotation.bEnabled)
 	{
-		ActiveAdjustments.Add(TEXT("ArmRot"));
+		if (ArmRotation.BlendMode == ENamiCameraAdjustBlendMode::Override)
+		{
+			ActiveAdjustments.Add(TEXT("ArmRot[O]"));
+		}
+		else
+		{
+			ActiveAdjustments.Add(TEXT("ArmRot"));
+		}
 	}
-	if (bEnableCameraOffset)
+	if (CameraOffset.bEnabled)
 	{
 		ActiveAdjustments.Add(TEXT("CamOff"));
 	}
-	if (bEnableCameraRotation)
+	if (CameraRotation.bEnabled)
 	{
 		ActiveAdjustments.Add(TEXT("CamRot"));
 	}
-	if (bEnablePivotOffset)
+	if (PivotOffset.bEnabled)
 	{
 		ActiveAdjustments.Add(TEXT("Pivot"));
 	}
@@ -203,44 +189,60 @@ FNamiCameraAdjustParams UAnimNotifyState_CameraAdjust::BuildAdjustParams() const
 	FNamiCameraAdjustParams Params;
 
 	// FOV
-	if (bEnableFOV)
+	if (FOV.bEnabled)
 	{
-		Params.FOVOffset = FOVOffset;
+		Params.FOVOffset = FOV.Value;
+		Params.FOVBlendMode = FOV.BlendMode;
 		Params.MarkFOVModified();
 	}
 
 	// 臂长
-	if (bEnableArmLength)
+	if (ArmLength.bEnabled)
 	{
-		Params.TargetArmLengthOffset = ArmLengthOffset;
+		Params.TargetArmLengthOffset = ArmLength.Value;
+		Params.ArmLengthBlendMode = ArmLength.BlendMode;
 		Params.MarkTargetArmLengthModified();
 	}
 
 	// 臂旋转
-	if (bEnableArmRotation)
+	if (ArmRotation.bEnabled)
 	{
-		Params.ArmRotationOffset = ArmRotationOffset;
+		// Additive 模式：Value 作为偏移量
+		// Override 模式：Value 作为目标（已在 NotifyBegin 中设置到 Adjust->ArmRotationTarget）
+		if (ArmRotation.BlendMode == ENamiCameraAdjustBlendMode::Additive)
+		{
+			Params.ArmRotationOffset = ArmRotation.Value;
+		}
+		else
+		{
+			// Override 模式下，偏移值在 CalculateCombinedAdjustParams 中从 Target 计算
+			Params.ArmRotationOffset = FRotator::ZeroRotator;
+		}
+		Params.ArmRotationBlendMode = ArmRotation.BlendMode;
 		Params.MarkArmRotationModified();
 	}
 
 	// 相机位置偏移
-	if (bEnableCameraOffset)
+	if (CameraOffset.bEnabled)
 	{
-		Params.CameraLocationOffset = CameraLocationOffset;
+		Params.CameraLocationOffset = CameraOffset.Value;
+		Params.CameraOffsetBlendMode = CameraOffset.BlendMode;
 		Params.MarkCameraLocationOffsetModified();
 	}
 
 	// 相机旋转偏移
-	if (bEnableCameraRotation)
+	if (CameraRotation.bEnabled)
 	{
-		Params.CameraRotationOffset = CameraRotationOffset;
+		Params.CameraRotationOffset = CameraRotation.Value;
+		Params.CameraRotationBlendMode = CameraRotation.BlendMode;
 		Params.MarkCameraRotationOffsetModified();
 	}
 
 	// Pivot偏移
-	if (bEnablePivotOffset)
+	if (PivotOffset.bEnabled)
 	{
-		Params.PivotOffset = PivotOffset;
+		Params.PivotOffset = PivotOffset.Value;
+		Params.PivotOffsetBlendMode = PivotOffset.BlendMode;
 		Params.MarkPivotOffsetModified();
 	}
 

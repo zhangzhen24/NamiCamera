@@ -51,6 +51,101 @@ FNamiCameraAdjustParams FNamiCameraAdjustParams::ScaleByWeight(float Weight) con
 	Result.SocketOffsetDelta = SocketOffsetDelta * Weight;
 	Result.TargetOffsetDelta = TargetOffsetDelta * Weight;
 
+	// 保持每参数混合模式
+	Result.FOVBlendMode = FOVBlendMode;
+	Result.ArmLengthBlendMode = ArmLengthBlendMode;
+	Result.ArmRotationBlendMode = ArmRotationBlendMode;
+	Result.CameraOffsetBlendMode = CameraOffsetBlendMode;
+	Result.CameraRotationBlendMode = CameraRotationBlendMode;
+	Result.PivotOffsetBlendMode = PivotOffsetBlendMode;
+
+	// 保持修改标志
+	Result.ModifiedFlags = ModifiedFlags;
+
+	return Result;
+}
+
+FNamiCameraAdjustParams FNamiCameraAdjustParams::ScaleAdditiveParamsByWeight(float Weight) const
+{
+	FNamiCameraAdjustParams Result;
+
+	// FOV - 只在 Additive 模式下缩放
+	if (FOVBlendMode == ENamiCameraAdjustBlendMode::Additive)
+	{
+		Result.FOVOffset = FOVOffset * Weight;
+		Result.FOVMultiplier = FMath::Lerp(1.f, FOVMultiplier, Weight);
+	}
+	else
+	{
+		Result.FOVOffset = FOVOffset;
+		Result.FOVMultiplier = FOVMultiplier;
+	}
+	Result.FOVTarget = FOVTarget;
+	Result.FOVBlendMode = FOVBlendMode;
+
+	// ArmLength - 只在 Additive 模式下缩放
+	if (ArmLengthBlendMode == ENamiCameraAdjustBlendMode::Additive)
+	{
+		Result.TargetArmLengthOffset = TargetArmLengthOffset * Weight;
+		Result.TargetArmLengthMultiplier = FMath::Lerp(1.f, TargetArmLengthMultiplier, Weight);
+	}
+	else
+	{
+		Result.TargetArmLengthOffset = TargetArmLengthOffset;
+		Result.TargetArmLengthMultiplier = TargetArmLengthMultiplier;
+	}
+	Result.TargetArmLengthTarget = TargetArmLengthTarget;
+	Result.ArmLengthBlendMode = ArmLengthBlendMode;
+
+	// ArmRotation - 只在 Additive 模式下缩放
+	if (ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Additive)
+	{
+		Result.ArmRotationOffset = ArmRotationOffset * Weight;
+	}
+	else
+	{
+		// Override 模式：不缩放，delta 在 CalculateCombinedAdjustParams 中计算
+		Result.ArmRotationOffset = ArmRotationOffset;
+	}
+	Result.ArmRotationBlendMode = ArmRotationBlendMode;
+
+	// CameraOffset - 只在 Additive 模式下缩放
+	if (CameraOffsetBlendMode == ENamiCameraAdjustBlendMode::Additive)
+	{
+		Result.CameraLocationOffset = CameraLocationOffset * Weight;
+	}
+	else
+	{
+		Result.CameraLocationOffset = CameraLocationOffset;
+	}
+	Result.CameraOffsetBlendMode = CameraOffsetBlendMode;
+
+	// CameraRotation - 只在 Additive 模式下缩放
+	if (CameraRotationBlendMode == ENamiCameraAdjustBlendMode::Additive)
+	{
+		Result.CameraRotationOffset = CameraRotationOffset * Weight;
+	}
+	else
+	{
+		Result.CameraRotationOffset = CameraRotationOffset;
+	}
+	Result.CameraRotationBlendMode = CameraRotationBlendMode;
+
+	// PivotOffset - 只在 Additive 模式下缩放
+	if (PivotOffsetBlendMode == ENamiCameraAdjustBlendMode::Additive)
+	{
+		Result.PivotOffset = PivotOffset * Weight;
+	}
+	else
+	{
+		Result.PivotOffset = PivotOffset;
+	}
+	Result.PivotOffsetBlendMode = PivotOffsetBlendMode;
+
+	// SocketOffset 和 TargetOffset - 这些通常是 Additive，按权重缩放
+	Result.SocketOffsetDelta = SocketOffsetDelta * Weight;
+	Result.TargetOffsetDelta = TargetOffsetDelta * Weight;
+
 	// 保持修改标志
 	Result.ModifiedFlags = ModifiedFlags;
 

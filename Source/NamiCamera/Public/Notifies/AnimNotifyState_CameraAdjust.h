@@ -36,80 +36,60 @@ public:
 
 	// ==================== FOV 调整 ====================
 
-	/** 是否启用FOV调整 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "1. FOV")
-	bool bEnableFOV = false;
-
-	/** FOV偏移量（Additive模式）。正值广角，负值长焦。例如：+10 = 更广的视野，-10 = 更窄的视野 */
+	/**
+	 * FOV 调整参数
+	 * 正值广角，负值长焦。例如：+10 = 更广的视野，-10 = 更窄的视野
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "1. FOV",
-		meta = (EditCondition = "bEnableFOV", ClampMin = "-60", ClampMax = "60",
-			Tooltip = "FOV偏移量。正值广角，负值长焦。\n例如：+10 = 更广的视野，-10 = 更窄的视野"))
-	float FOVOffset = 0.f;
+		meta = (Tooltip = "FOV偏移量。正值广角，负值长焦。"))
+	FNamiCameraFloatParam FOV;
 
-	// ==================== 相机臂长度 ====================
-
-	/** 是否启用臂长调整 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 相机臂")
-	bool bEnableArmLength = false;
-
-	/** 臂长偏移量。正值拉远，负值拉近。例如：+100 = 相机拉远100单位 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 相机臂",
-		meta = (EditCondition = "bEnableArmLength", ClampMin = "-500", ClampMax = "500",
-			Tooltip = "臂长偏移量。正值拉远，负值拉近。"))
-	float ArmLengthOffset = 0.f;
-
-	// ==================== 相机臂旋转 ====================
-
-	/** 是否启用臂旋转调整 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 相机臂")
-	bool bEnableArmRotation = false;
+	// ==================== 相机臂 ====================
 
 	/**
-	 * 臂旋转值。语义取决于混合模式：
-	 * - Additive模式：相对于当前臂旋转的偏移
-	 * - Override模式：相对于角色朝向的目标位置（激活时刻锁定）
-	 * Pitch=俯仰(正值向上)，Yaw=偏航(正值向右)
+	 * 相机臂长度调整
+	 * 正值拉远，负值拉近。例如：+100 = 相机拉远100单位
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 相机臂",
-		meta = (EditCondition = "bEnableArmRotation",
-			Tooltip = "臂旋转值。\nAdditive模式：相对于当前臂旋转的偏移\nOverride模式：相对于角色朝向的目标位置\n\nPitch = 俯仰（正值向上看）\nYaw = 偏航（正值向右看）"))
-	FRotator ArmRotationOffset = FRotator::ZeroRotator;
+		meta = (Tooltip = "臂长偏移量。正值拉远，负值拉近。"))
+	FNamiCameraFloatParam ArmLength;
 
-	// ==================== 相机位置偏移 ====================
+	/**
+	 * 相机臂旋转调整
+	 * Additive 模式：相对于当前臂旋转的偏移
+	 * Override 模式：相对于角色 Mesh 朝向的目标位置
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "2. 相机臂",
+		meta = (Tooltip = "臂旋转调整。\nAdditive: 相对于当前臂旋转偏移\nOverride: 相对于角色Mesh朝向的目标位置"))
+	FNamiCameraArmRotationParam ArmRotation;
 
-	/** 是否启用相机位置偏移 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "3. 相机位置")
-	bool bEnableCameraOffset = false;
+	// ==================== 相机位置 ====================
 
-	/** 相机位置偏移（相机本地空间）。X=前后，Y=左右，Z=上下 */
+	/**
+	 * 相机位置偏移（相机本地空间）
+	 * X=前后，Y=左右，Z=上下
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "3. 相机位置",
-		meta = (EditCondition = "bEnableCameraOffset",
-			Tooltip = "相机位置偏移（相机本地空间）。\nX = 前后（正值向前）\nY = 左右（正值向右）\nZ = 上下（正值向上）"))
-	FVector CameraLocationOffset = FVector::ZeroVector;
+		meta = (Tooltip = "相机位置偏移（相机本地空间）。\nX=前后, Y=左右, Z=上下"))
+	FNamiCameraVectorParam CameraOffset;
 
-	// ==================== 相机旋转偏移 ====================
-
-	/** 是否启用相机旋转偏移 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "3. 相机位置")
-	bool bEnableCameraRotation = false;
-
-	/** 相机旋转偏移。只影响朝向，不影响位置 */
+	/**
+	 * 相机旋转偏移
+	 * 只影响相机朝向，不影响位置
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "3. 相机位置",
-		meta = (EditCondition = "bEnableCameraRotation",
-			Tooltip = "相机旋转偏移。只影响相机朝向，不影响相机位置。"))
-	FRotator CameraRotationOffset = FRotator::ZeroRotator;
+		meta = (Tooltip = "相机旋转偏移。只影响相机朝向，不影响位置。"))
+	FNamiCameraRotatorParam CameraRotation;
 
-	// ==================== Pivot 偏移 ====================
+	// ==================== Pivot ====================
 
-	/** 是否启用Pivot偏移 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "4. Pivot")
-	bool bEnablePivotOffset = false;
-
-	/** Pivot位置偏移（世界空间）。调整相机观察的中心点 */
+	/**
+	 * Pivot 位置偏移（世界空间）
+	 * 调整相机观察的中心点
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "4. Pivot",
-		meta = (EditCondition = "bEnablePivotOffset",
-			Tooltip = "Pivot位置偏移（世界空间）。调整相机观察的中心点。"))
-	FVector PivotOffset = FVector::ZeroVector;
+		meta = (Tooltip = "Pivot位置偏移（世界空间）。调整相机观察的中心点。"))
+	FNamiCameraVectorParam PivotOffset;
 
 	// ==================== 混合设置 ====================
 
@@ -128,11 +108,6 @@ public:
 	/** 混合曲线类型 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "5. 混合")
 	ENamiCameraBlendType BlendType = ENamiCameraBlendType::EaseInOut;
-
-	/** 混合模式 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "5. 混合",
-		meta = (Tooltip = "Additive = 在当前值基础上叠加\nOverride = 覆盖到目标值\nMultiplicative = 乘法缩放"))
-	ENamiCameraAdjustBlendMode BlendMode = ENamiCameraAdjustBlendMode::Additive;
 
 	/** 优先级。数值越高越后处理，可覆盖低优先级的调整 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "5. 混合",
