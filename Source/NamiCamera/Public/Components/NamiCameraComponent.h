@@ -340,7 +340,7 @@ protected:
 	 * @param CurrentArmRotation 当前臂旋转（用于 Override 模式计算）
 	 * @return 合并后的调整参数
 	 */
-	FNamiCameraAdjustParams CalculateCombinedAdjustParams(float DeltaTime, const FRotator& CurrentArmRotation);
+	FNamiCameraAdjustParams CalculateCombinedAdjustParams(float DeltaTime, const FRotator& CurrentArmRotation, const FNamiCameraView& CurrentView);
 
 	/**
 	 * 将调整参数应用到视图
@@ -353,6 +353,20 @@ protected:
 	 * 清理已完全停用的调整器
 	 */
 	void CleanupInactiveCameraAdjusts();
+
+	/**
+	 * 检测是否有玩家相机旋转输入
+	 * @param Threshold 输入阈值（鼠标移动超过此值视为有输入）
+	 * @return 是否检测到输入
+	 */
+	bool DetectPlayerCameraInput(float Threshold) const;
+
+	/**
+	 * 同步臂旋转到 PlayerController 的 ControlRotation
+	 * 用于输入打断时，确保玩家从当前臂旋转位置接管控制
+	 * @param ArmRotation 当前臂旋转
+	 */
+	void SyncArmRotationToControlRotation(const FRotator& ArmRotation);
 
 	/**
 	 * 阶段 3：控制器同步层
@@ -428,4 +442,16 @@ private:
 	/** 相机调整器堆栈（按优先级排序） */
 	UPROPERTY()
 	TArray<TObjectPtr<UNamiCameraAdjust>> CameraAdjustStack;
+
+	// ========== 输入打断调试 ==========
+	/** 输入打断后的帧计数器（用于调试日志） */
+	int32 InputInterruptDebugFrameCounter = 0;
+	/** 打断前保存的视图信息 */
+	FNamiCameraView InputInterruptSavedView;
+
+	// ========== 输入打断同步 ==========
+	/** 是否需要同步 ControlRotation（在 CalculateCombinedAdjustParams 中设置，ProcessCameraAdjusts 中应用） */
+	bool bPendingControlRotationSync = false;
+	/** 待同步的 ControlRotation */
+	FRotator PendingControlRotation;
 };

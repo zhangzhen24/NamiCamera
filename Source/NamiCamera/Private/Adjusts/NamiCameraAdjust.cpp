@@ -18,6 +18,7 @@ UNamiCameraAdjust::UNamiCameraAdjust()
 	, State(ENamiCameraAdjustState::Inactive)
 	, ActiveTime(0.f)
 	, CustomInputValue(0.f)
+	, bInputInterrupted(false)
 {
 }
 
@@ -28,6 +29,7 @@ void UNamiCameraAdjust::Initialize(UNamiCameraComponent* InOwnerComponent)
 	CurrentBlendWeight = 0.f;
 	BlendTimer = 0.f;
 	ActiveTime = 0.f;
+	bInputInterrupted = false;
 }
 
 void UNamiCameraAdjust::OnActivate_Implementation()
@@ -42,7 +44,8 @@ void UNamiCameraAdjust::Tick_Implementation(float DeltaTime)
 
 void UNamiCameraAdjust::OnDeactivate_Implementation()
 {
-	// 默认实现为空，子类可重写
+	// 重置输入打断状态
+	bInputInterrupted = false;
 }
 
 FNamiCameraAdjustParams UNamiCameraAdjust::CalculateAdjustParams_Implementation(float DeltaTime)
@@ -102,6 +105,20 @@ void UNamiCameraAdjust::RequestDeactivate(bool bForceImmediate)
 void UNamiCameraAdjust::SetCustomInput(float Value)
 {
 	CustomInputValue = Value;
+}
+
+void UNamiCameraAdjust::TriggerInputInterrupt()
+{
+	if (!bInputInterrupted)
+	{
+		bInputInterrupted = true;
+
+		// 广播蓝图事件
+		OnInputInterrupted.Broadcast();
+
+		// 开始混出（保留玩家对相机臂的控制权）
+		RequestDeactivate();
+	}
 }
 
 bool UNamiCameraAdjust::IsActive() const

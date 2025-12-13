@@ -11,6 +11,9 @@
 
 class UNamiCameraComponent;
 
+/** 被玩家输入打断时触发的委托 */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCameraAdjustInputInterrupted);
+
 /**
  * 相机调整基类
  *
@@ -129,6 +132,41 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Camera Adjust|Override")
 	FRotator GetCachedWorldArmRotationTarget() const { return CachedWorldArmRotationTarget; }
 
+	// ========== 玩家输入控制 ==========
+
+	/**
+	 * 是否允许玩家在混合过程中控制相机臂旋转
+	 * true: 玩家输入直接控制相机臂，Adjust 不参与 ArmRotation 混合
+	 * false: Adjust 控制相机臂，但会检测玩家输入并触发打断
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input Control")
+	bool bAllowPlayerInput = false;
+
+	/**
+	 * 输入打断阈值（鼠标移动超过此值视为有输入）
+	 * 仅在 bAllowPlayerInput=false 时生效
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input Control",
+		meta = (EditCondition = "!bAllowPlayerInput", ClampMin = "0.1"))
+	float InputInterruptThreshold = 1.0f;
+
+	/**
+	 * 被玩家输入打断时触发
+	 * 可用于蓝图中响应打断事件（如：播放提示动画）
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Camera Adjust|Events")
+	FOnCameraAdjustInputInterrupted OnInputInterrupted;
+
+	/**
+	 * 触发输入打断
+	 * 调用后会广播 OnInputInterrupted 事件，并开始 BlendOut
+	 */
+	void TriggerInputInterrupt();
+
+	/** 是否被玩家输入打断 */
+	UFUNCTION(BlueprintPure, Category = "Camera Adjust|State")
+	bool IsInputInterrupted() const { return bInputInterrupted; }
+
 	// ========== 优先级 ==========
 
 	/** 优先级（数值越高越后处理，越能覆盖前面的效果） */
@@ -210,6 +248,9 @@ protected:
 
 	/** 自定义输入值 */
 	float CustomInputValue;
+
+	/** 是否被玩家输入打断 */
+	bool bInputInterrupted;
 
 	/** 所属的相机组件 */
 	UPROPERTY()

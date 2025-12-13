@@ -1115,17 +1115,87 @@ void UNamiCameraComponent::ProcessCameraAdjusts(float DeltaTime, FNamiCameraPipe
 	FVector CurrentArmDir = InOutView.CameraLocation - InOutView.PivotLocation;
 	FRotator CurrentArmRotation = CurrentArmDir.Rotation();
 
+	// 调试：追踪打断后的帧（在开头记录 CameraAdjust 应用前的状态）
+	if (InputInterruptDebugFrameCounter > 0)
+	{
+		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] === 第 %d 帧 (CameraAdjust应用前) ==="), InputInterruptDebugFrameCounter);
+		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+			InOutView.CameraLocation.X, InOutView.CameraLocation.Y, InOutView.CameraLocation.Z);
+		UE_LOG(LogNamiCamera, Log, TEXT("  ArmRotation(Mode输出): P=%.2f Y=%.2f R=%.2f"),
+			CurrentArmRotation.Pitch, CurrentArmRotation.Yaw, CurrentArmRotation.Roll);
+		UE_LOG(LogNamiCamera, Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f R=%.2f"),
+			InOutView.ControlRotation.Pitch, InOutView.ControlRotation.Yaw, InOutView.ControlRotation.Roll);
+
+		InputInterruptDebugFrameCounter++;
+		if (InputInterruptDebugFrameCounter > 3)
+		{
+			InputInterruptDebugFrameCounter = 0; // 只追踪3帧
+		}
+	}
+
 	// 计算合并后的调整参数
-	FNamiCameraAdjustParams CombinedParams = CalculateCombinedAdjustParams(DeltaTime, CurrentArmRotation);
+	FNamiCameraAdjustParams CombinedParams = CalculateCombinedAdjustParams(DeltaTime, CurrentArmRotation, InOutView);
 
 	// 应用调整参数到视图
 	ApplyAdjustParamsToView(CombinedParams, InOutView);
+
+	// 应用待同步的 ControlRotation（如果有）
+	// 这确保 ProcessControllerSync 使用正确的值，而不是 Mode 的输出
+	if (bPendingControlRotationSync)
+	{
+		InOutView.ControlRotation = PendingControlRotation;
+		bPendingControlRotationSync = false;
+		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 应用待同步 ControlRotation 到 InOutView: P=%.2f Y=%.2f R=%.2f"),
+			PendingControlRotation.Pitch, PendingControlRotation.Yaw, PendingControlRotation.Roll);
+	}
+
+	// 调试：记录 CameraAdjust 应用后的最终视图
+	if (InputInterruptDebugFrameCounter == 1)
+	{
+		// 打断帧：保存 CameraAdjust 应用后的实际相机位置
+		InputInterruptSavedView = InOutView;
+		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 打断帧 - CameraAdjust 应用后 View:"));
+		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+			InOutView.CameraLocation.X, InOutView.CameraLocation.Y, InOutView.CameraLocation.Z);
+		UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+			InOutView.CameraRotation.Pitch, InOutView.CameraRotation.Yaw, InOutView.CameraRotation.Roll);
+
+		// 计算应用后的臂旋转
+		FVector FinalArmDir = InOutView.CameraLocation - InOutView.PivotLocation;
+		FRotator FinalArmRotation = FinalArmDir.Rotation();
+		UE_LOG(LogNamiCamera, Log, TEXT("  FinalArmRotation(计算): P=%.2f Y=%.2f R=%.2f"),
+			FinalArmRotation.Pitch, FinalArmRotation.Yaw, FinalArmRotation.Roll);
+	}
+	else if (InputInterruptDebugFrameCounter > 1)
+	{
+		// 后续帧：记录 CameraAdjust 应用后的视图并对比
+		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 第 %d 帧 - CameraAdjust 应用后 View:"), InputInterruptDebugFrameCounter);
+		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+			InOutView.CameraLocation.X, InOutView.CameraLocation.Y, InOutView.CameraLocation.Z);
+		UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+			InOutView.CameraRotation.Pitch, InOutView.CameraRotation.Yaw, InOutView.CameraRotation.Roll);
+
+		// 计算应用后的臂旋转
+		FVector FinalArmDir = InOutView.CameraLocation - InOutView.PivotLocation;
+		FRotator FinalArmRotation = FinalArmDir.Rotation();
+		UE_LOG(LogNamiCamera, Log, TEXT("  FinalArmRotation(计算): P=%.2f Y=%.2f R=%.2f"),
+			FinalArmRotation.Pitch, FinalArmRotation.Yaw, FinalArmRotation.Roll);
+
+		// 与打断帧对比
+		FVector LocDelta = InOutView.CameraLocation - InputInterruptSavedView.CameraLocation;
+		FRotator RotDelta = InOutView.CameraRotation - InputInterruptSavedView.CameraRotation;
+		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 与打断帧对比:"));
+		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation 差异: X=%.2f Y=%.2f Z=%.2f (距离=%.2f)"),
+			LocDelta.X, LocDelta.Y, LocDelta.Z, LocDelta.Size());
+		UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation 差异: P=%.2f Y=%.2f R=%.2f"),
+			RotDelta.Pitch, RotDelta.Yaw, RotDelta.Roll);
+	}
 
 	// 清理已完全停用的调整器
 	CleanupInactiveCameraAdjusts();
 }
 
-FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(float DeltaTime, const FRotator& CurrentArmRotation)
+FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(float DeltaTime, const FRotator& CurrentArmRotation, const FNamiCameraView& CurrentView)
 {
 	FNamiCameraAdjustParams CombinedParams;
 
@@ -1170,29 +1240,149 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 			CombinedParams.MarkTargetArmLengthModified();
 		}
 
-		// ArmRotation - 使用四元数进行混合计算
+		// ArmRotation - 检查玩家输入控制后使用四元数进行混合计算
 		if (AdjustParams.HasFlag(ENamiCameraAdjustModifiedFlags::ArmRotation))
 		{
-			bHasArmRotation = true;
+			bool bSkipArmRotation = false;
 
-			if (AdjustParams.ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Override)
+			// 检查是否允许玩家输入
+			if (Adjust->bAllowPlayerInput)
 			{
-				// Override 模式：使用四元数 Slerp 从当前位置混合到目标
-				FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
-				// Slerp 计算从当前到目标的插值旋转
-				FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, Weight);
-				// 计算相对于当前的偏移四元数
-				FQuat OffsetQuat = InterpolatedQuat * CurrentArmQuat.Inverse();
-				// 组合到累积的旋转四元数
-				CombinedArmRotationQuat = CombinedArmRotationQuat * OffsetQuat;
+				// 允许玩家输入，跳过 ArmRotation 混合
+				bSkipArmRotation = true;
+			}
+			// 检查输入打断（仅在未被打断时检测）
+			else if (!Adjust->IsInputInterrupted())
+			{
+				bool bHasInput = DetectPlayerCameraInput(Adjust->InputInterruptThreshold);
+				// 每秒打印一次输入检测状态（避免日志刷屏）
+				static float LastLogTime = 0.f;
+				float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+				if (CurrentTime - LastLogTime > 1.0f)
+				{
+					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 输入检测: bHasInput=%s, Threshold=%.2f"),
+						bHasInput ? TEXT("true") : TEXT("false"), Adjust->InputInterruptThreshold);
+					LastLogTime = CurrentTime;
+				}
+				if (bHasInput)
+				{
+					// 计算应用 CameraAdjust 偏移后的臂旋转
+					// 这才是相机实际所在位置对应的臂旋转
+					FRotator AdjustedArmRotation = CurrentArmRotation;
+					if (AdjustParams.ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Override)
+					{
+						// Override 模式：计算 Slerp 混合后的旋转
+						FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
+						FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, Weight);
+						AdjustedArmRotation = InterpolatedQuat.Rotator();
+					}
+					else
+					{
+						// Additive 模式：加上偏移
+						AdjustedArmRotation = CurrentArmRotation + AdjustParams.ArmRotationOffset;
+					}
+
+					// 将 ArmRotation 转换为 ControlRotation
+					// ArmRotation 是从 Pivot 到相机的方向
+					// ControlRotation 是相机看的方向（朝向角色）= ArmRotation + 180°
+					FRotator AdjustedControlRotation = AdjustedArmRotation;
+					AdjustedControlRotation.Yaw += 180.0f;
+					AdjustedControlRotation.Pitch = -AdjustedControlRotation.Pitch; // Pitch 反转
+					AdjustedControlRotation.Normalize();
+
+					// 记录打断前的状态
+					APlayerController* PC = GetOwnerPlayerController();
+					FRotator OldControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
+
+					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] ========== 输入打断触发 =========="));
+					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 打断前 View (CameraAdjust应用前):"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+						CurrentView.CameraLocation.X, CurrentView.CameraLocation.Y, CurrentView.CameraLocation.Z);
+					UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+						CurrentView.CameraRotation.Pitch, CurrentView.CameraRotation.Yaw, CurrentView.CameraRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  PivotLocation: X=%.2f Y=%.2f Z=%.2f"),
+						CurrentView.PivotLocation.X, CurrentView.PivotLocation.Y, CurrentView.PivotLocation.Z);
+					UE_LOG(LogNamiCamera, Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f R=%.2f"),
+						CurrentView.ControlRotation.Pitch, CurrentView.ControlRotation.Yaw, CurrentView.ControlRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  FOV: %.2f"), CurrentView.FOV);
+
+					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 相机臂信息:"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentArmRotation(Mode输出): P=%.2f Y=%.2f R=%.2f"),
+						CurrentArmRotation.Pitch, CurrentArmRotation.Yaw, CurrentArmRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedArmRotation(Slerp后): P=%.2f Y=%.2f R=%.2f"),
+						AdjustedArmRotation.Pitch, AdjustedArmRotation.Yaw, AdjustedArmRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedControlRotation(Arm+180): P=%.2f Y=%.2f R=%.2f"),
+						AdjustedControlRotation.Pitch, AdjustedControlRotation.Yaw, AdjustedControlRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  TargetArmRotation: P=%.2f Y=%.2f R=%.2f"),
+						Adjust->GetCachedWorldArmRotationTarget().Pitch, Adjust->GetCachedWorldArmRotationTarget().Yaw, Adjust->GetCachedWorldArmRotationTarget().Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  BlendWeight: %.3f"), Weight);
+
+					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] ControlRotation:"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(打断前): P=%.2f Y=%.2f R=%.2f"),
+						OldControlRotation.Pitch, OldControlRotation.Yaw, OldControlRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentControlRotation(缓存): P=%.2f Y=%.2f R=%.2f"),
+						CurrentControlRotation.Pitch, CurrentControlRotation.Yaw, CurrentControlRotation.Roll);
+
+					// 保存打断前的视图（用于后续帧对比）
+					// 注意：这里保存的是 CameraAdjust 应用前的视图
+					// 实际相机位置需要在 ApplyAdjustParamsToView 后才知道
+					InputInterruptSavedView = CurrentView;
+					InputInterruptDebugFrameCounter = 1;
+
+					// 同步 ControlRotation（不是 ArmRotation！）
+					// ControlRotation = 相机朝向 = ArmRotation + 180°
+					// 这样下一帧 Mode 用新 ControlRotation 计算出的 ArmRotation = 当前相机臂位置
+					SyncArmRotationToControlRotation(AdjustedControlRotation);
+
+					// 设置待同步标记，让 ProcessCameraAdjusts 修改 InOutView.ControlRotation
+					// 这样 ProcessControllerSync 就会使用正确的值，而不是 Mode 的输出
+					bPendingControlRotationSync = true;
+					PendingControlRotation = AdjustedControlRotation;
+
+					// 记录打断后的状态
+					FRotator NewControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
+					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 同步后:"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(打断后): P=%.2f Y=%.2f R=%.2f"),
+						NewControlRotation.Pitch, NewControlRotation.Yaw, NewControlRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentControlRotation(缓存): P=%.2f Y=%.2f R=%.2f"),
+						CurrentControlRotation.Pitch, CurrentControlRotation.Yaw, CurrentControlRotation.Roll);
+
+					// 触发输入打断
+					Adjust->TriggerInputInterrupt();
+
+					// 【关键】这一帧继续应用 ArmRotation 偏移，不设置 bSkipArmRotation
+					// 下一帧 IsInputInterrupted() 为 true，才会跳过
+				}
 			}
 			else
 			{
-				// Additive 模式：将偏移转换为四元数后组合（偏移已被权重缩放）
-				FQuat AdditiveQuat = AdjustParams.ArmRotationOffset.Quaternion();
-				CombinedArmRotationQuat = CombinedArmRotationQuat * AdditiveQuat;
+				// 已被打断，跳过 ArmRotation
+				bSkipArmRotation = true;
 			}
-			CombinedParams.ArmRotationBlendMode = AdjustParams.ArmRotationBlendMode;
+
+			if (!bSkipArmRotation)
+			{
+				bHasArmRotation = true;
+
+				if (AdjustParams.ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Override)
+				{
+					// Override 模式：使用四元数 Slerp 从当前位置混合到目标
+					FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
+					// Slerp 计算从当前到目标的插值旋转
+					FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, Weight);
+					// 计算相对于当前的偏移四元数
+					FQuat OffsetQuat = InterpolatedQuat * CurrentArmQuat.Inverse();
+					// 组合到累积的旋转四元数
+					CombinedArmRotationQuat = CombinedArmRotationQuat * OffsetQuat;
+				}
+				else
+				{
+					// Additive 模式：将偏移转换为四元数后组合（偏移已被权重缩放）
+					FQuat AdditiveQuat = AdjustParams.ArmRotationOffset.Quaternion();
+					CombinedArmRotationQuat = CombinedArmRotationQuat * AdditiveQuat;
+				}
+				CombinedParams.ArmRotationBlendMode = AdjustParams.ArmRotationBlendMode;
+			}
 		}
 
 		// CameraOffset
@@ -1312,5 +1502,37 @@ void UNamiCameraComponent::CleanupInactiveCameraAdjusts()
 		{
 			CameraAdjustStack.RemoveAt(i);
 		}
+	}
+}
+
+bool UNamiCameraComponent::DetectPlayerCameraInput(float Threshold) const
+{
+	APlayerController* PC = GetOwnerPlayerController();
+	if (!PC)
+	{
+		return false;
+	}
+
+	float TurnInput = 0.f;
+	float LookInput = 0.f;
+	PC->GetInputMouseDelta(TurnInput, LookInput);
+
+	return FMath::Abs(TurnInput) > Threshold || FMath::Abs(LookInput) > Threshold;
+}
+
+void UNamiCameraComponent::SyncArmRotationToControlRotation(const FRotator& ArmRotation)
+{
+	// 同步缓存变量，跳过 ProcessControllerSync 的平滑混合
+	CurrentControlRotation = ArmRotation;
+
+	// 重置相机视图初始化标记，让 ProcessSmoothing 下一帧重新初始化
+	// 这样相机位置会直接使用新的计算结果，避免从旧缓存位置平滑过渡导致瞬切
+	bHasInitializedCurrentView = false;
+
+	// 同步 PlayerController
+	APlayerController* PC = GetOwnerPlayerController();
+	if (PC)
+	{
+		PC->SetControlRotation(ArmRotation);
 	}
 }

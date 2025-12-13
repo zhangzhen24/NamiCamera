@@ -114,6 +114,26 @@ public:
 		meta = (Tooltip = "数值越高优先级越高，可覆盖低优先级的调整"))
 	int32 Priority = 100;
 
+	// ==================== 输入控制 ====================
+
+	/**
+	 * 是否允许玩家在混合过程中控制相机臂旋转
+	 * true: 玩家输入直接控制相机臂，Adjust 不参与 ArmRotation 混合
+	 * false: Adjust 控制相机臂，但会检测玩家输入并触发打断
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "6. 输入控制",
+		meta = (Tooltip = "是否允许玩家在混合过程中控制相机臂旋转。\ntrue: 玩家自由控制\nfalse: Adjust控制，玩家输入会触发打断"))
+	bool bAllowPlayerInput = false;
+
+	/**
+	 * 输入打断阈值（鼠标移动超过此值视为有输入）
+	 * 仅在 bAllowPlayerInput=false 时生效
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "6. 输入控制",
+		meta = (EditCondition = "!bAllowPlayerInput", ClampMin = "0.1",
+			Tooltip = "输入打断阈值。鼠标移动超过此值视为玩家有输入。"))
+	float InputInterruptThreshold = 1.0f;
+
 	// ==================== AnimNotifyState 接口 ====================
 
 	virtual void NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation,

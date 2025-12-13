@@ -14,6 +14,10 @@ UAnimNotifyState_CameraAdjust::UAnimNotifyState_CameraAdjust()
 	BlendOutTime = 0.2f;
 	BlendType = ENamiCameraBlendType::EaseInOut;
 	Priority = 100;
+
+	// 输入控制默认值
+	bAllowPlayerInput = false;
+	InputInterruptThreshold = 1.0f;
 }
 
 void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation,
@@ -51,6 +55,10 @@ void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp
 	Adjust->BlendOutTime = BlendOutTime;
 	Adjust->BlendType = BlendType;
 	Adjust->Priority = Priority;
+
+	// 配置输入控制参数
+	Adjust->bAllowPlayerInput = bAllowPlayerInput;
+	Adjust->InputInterruptThreshold = InputInterruptThreshold;
 
 	// 对于 ArmRotation Override 模式，设置臂旋转目标值
 	if (ArmRotation.bEnabled && ArmRotation.BlendMode == ENamiCameraAdjustBlendMode::Override)
