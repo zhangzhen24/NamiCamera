@@ -167,6 +167,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Camera Adjust|State")
 	bool IsInputInterrupted() const { return bInputInterrupted; }
 
+	/** 混出时是否已同步 ControlRotation */
+	bool IsBlendOutSynced() const { return bBlendOutSynced; }
+
+	/** 标记混出已同步 */
+	void MarkBlendOutSynced() { bBlendOutSynced = true; }
+
 	// ========== 优先级 ==========
 
 	/** 优先级（数值越高越后处理，越能覆盖前面的效果） */
@@ -251,6 +257,9 @@ protected:
 
 	/** 是否被玩家输入打断 */
 	bool bInputInterrupted;
+
+	/** 混出时是否已同步 ControlRotation */
+	bool bBlendOutSynced = false;
 
 	/** 所属的相机组件 */
 	UPROPERTY()

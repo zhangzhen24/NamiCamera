@@ -2,6 +2,7 @@
 
 #include "Adjusts/NamiCameraAdjust.h"
 #include "Components/NamiCameraComponent.h"
+#include "LogNamiCamera.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -99,6 +100,7 @@ void UNamiCameraAdjust::RequestDeactivate(bool bForceImmediate)
 		// 开始混合退出
 		State = ENamiCameraAdjustState::BlendingOut;
 		BlendTimer = BlendOutTime * CurrentBlendWeight; // 从当前权重开始退出
+		bBlendOutSynced = false; // 重置同步标记，第一帧需要同步 ControlRotation
 	}
 }
 
@@ -118,6 +120,10 @@ void UNamiCameraAdjust::TriggerInputInterrupt()
 
 		// 开始混出（保留玩家对相机臂的控制权）
 		RequestDeactivate();
+
+		// 标记混出已同步，因为打断时已经同步了 ControlRotation
+		// 这样混出第一帧不会再次同步，避免瞬切
+		bBlendOutSynced = true;
 	}
 }
 
@@ -151,33 +157,24 @@ void UNamiCameraAdjust::CacheArmRotationTarget()
 		return;
 	}
 
-	// 获取角色 Mesh 朝向（而不是 Actor 朝向）
-	// Override 模式的目标是相对于角色 Mesh 空间的：
-	// - Yaw = 0°：角色正前方
-	// - Yaw = 180°：角色后方（默认相机位置）
-	// - Yaw = 45°：角色右前方
-	// - Pitch > 0：俯视
-	FRotator MeshRotation = FRotator::ZeroRotator;
-	if (ACharacter* Character = Cast<ACharacter>(OwnerPawn))
-	{
-		if (USkeletalMeshComponent* Mesh = Character->GetMesh())
-		{
-			MeshRotation = Mesh->GetComponentRotation();
-		}
-		else
-		{
-			MeshRotation = OwnerPawn->GetActorRotation();
-		}
-	}
-	else
-	{
-		MeshRotation = OwnerPawn->GetActorRotation();
-	}
+	// 使用 Actor 的朝向作为基准
+	// Actor 的前方是游戏逻辑中角色的朝向（+X 方向）
+	// 不使用 Mesh 的朝向，因为 Mesh 可能有 -90° 或 180° 的本地旋转偏移
+	FRotator ActorForwardRotation = OwnerPawn->GetActorRotation();
 
 	// 计算世界空间的目标臂旋转
-	// ArmRotationTarget 是相对于角色 Mesh 朝向的偏移
-	CachedWorldArmRotationTarget = MeshRotation + ArmRotationTarget;
+	// ArmRotationTarget 是相对于角色朝向的偏移：
+	// - Yaw = 0°：角色正前方
+	// - Yaw = 45°：角色右前方
+	// - Yaw = -45°：角色左前方
+	// - Yaw = 180°：角色正后方
+	CachedWorldArmRotationTarget = ActorForwardRotation + ArmRotationTarget;
 	CachedWorldArmRotationTarget.Normalize();
+
+	UE_LOG(LogNamiCamera, Log, TEXT("[CacheArmRotationTarget] ActorForward: P=%.2f Y=%.2f, Target: P=%.2f Y=%.2f, Result: P=%.2f Y=%.2f"),
+		ActorForwardRotation.Pitch, ActorForwardRotation.Yaw,
+		ArmRotationTarget.Pitch, ArmRotationTarget.Yaw,
+		CachedWorldArmRotationTarget.Pitch, CachedWorldArmRotationTarget.Yaw);
 }
 
 void UNamiCameraAdjust::UpdateBlending(float DeltaTime)

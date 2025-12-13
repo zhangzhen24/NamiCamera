@@ -1251,6 +1251,53 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 				// 允许玩家输入，跳过 ArmRotation 混合
 				bSkipArmRotation = true;
 			}
+			// 检查混出状态 - 混出期间允许玩家输入
+			else if (Adjust->IsBlendingOut())
+			{
+				// 混出开始的第一帧：同步 ControlRotation 到当前位置（防止瞬切）
+				if (!Adjust->IsBlendOutSynced())
+				{
+					// 计算当前相机臂位置（应用 CameraAdjust 后）
+					FRotator AdjustedArmRotation = CurrentArmRotation;
+					if (AdjustParams.ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Override)
+					{
+						// Override 模式：计算 Slerp 混合后的旋转
+						FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
+						FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, Weight);
+						AdjustedArmRotation = InterpolatedQuat.Rotator();
+					}
+					else
+					{
+						// Additive 模式：加上偏移
+						AdjustedArmRotation = CurrentArmRotation + AdjustParams.ArmRotationOffset;
+					}
+
+					// 将 ArmRotation 转换为 ControlRotation
+					FRotator AdjustedControlRotation = AdjustedArmRotation;
+					AdjustedControlRotation.Yaw += 180.0f;
+					AdjustedControlRotation.Pitch = -AdjustedControlRotation.Pitch;
+					AdjustedControlRotation.Normalize();
+
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] ========== 混出同步 =========="));
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] CurrentArmRotation: P=%.2f Y=%.2f"),
+						CurrentArmRotation.Pitch, CurrentArmRotation.Yaw);
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] AdjustedArmRotation: P=%.2f Y=%.2f"),
+						AdjustedArmRotation.Pitch, AdjustedArmRotation.Yaw);
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] AdjustedControlRotation: P=%.2f Y=%.2f"),
+						AdjustedControlRotation.Pitch, AdjustedControlRotation.Yaw);
+
+					// 同步 ControlRotation
+					SyncArmRotationToControlRotation(AdjustedControlRotation);
+					bPendingControlRotationSync = true;
+					PendingControlRotation = AdjustedControlRotation;
+
+					// 标记已同步
+					Adjust->MarkBlendOutSynced();
+				}
+
+				// 混出期间跳过 ArmRotation 混合，玩家自由控制
+				bSkipArmRotation = true;
+			}
 			// 检查输入打断（仅在未被打断时检测）
 			else if (!Adjust->IsInputInterrupted())
 			{
