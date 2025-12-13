@@ -1277,8 +1277,12 @@ void UNamiCameraComponent::ApplyAdjustParamsToView(const FNamiCameraAdjustParams
 			FVector NewArmDir = CombinedRotation.RotateVector(ArmDir);
 			InOutView.CameraLocation = InOutView.PivotLocation + NewArmDir;
 
-			// 同步更新相机朝向，使其跟随臂旋转
-			InOutView.CameraRotation = (FQuat(InOutView.CameraRotation) * CombinedRotation).Rotator();
+			// 重新计算相机朝向，使其始终看向 PivotLocation
+			FVector LookDirection = InOutView.PivotLocation - InOutView.CameraLocation;
+			if (!LookDirection.IsNearlyZero())
+			{
+				InOutView.CameraRotation = LookDirection.Rotation();
+			}
 		}
 	}
 
