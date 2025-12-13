@@ -1257,19 +1257,25 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 				// 混出开始的第一帧：同步 ControlRotation 到当前位置（防止瞬切）
 				if (!Adjust->IsBlendOutSynced())
 				{
-					// 计算当前相机臂位置（应用 CameraAdjust 后）
+					// 计算混出前相机臂的实际位置
+					// 注意：此时权重已经开始衰减，需要用满权重(1.0)来计算混出前的位置
 					FRotator AdjustedArmRotation = CurrentArmRotation;
 					if (AdjustParams.ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Override)
 					{
-						// Override 模式：计算 Slerp 混合后的旋转
+						// Override 模式：使用满权重计算 Slerp，这是混出前相机的实际位置
 						FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
-						FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, Weight);
+						FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, 1.0f); // 使用满权重
 						AdjustedArmRotation = InterpolatedQuat.Rotator();
 					}
 					else
 					{
-						// Additive 模式：加上偏移
-						AdjustedArmRotation = CurrentArmRotation + AdjustParams.ArmRotationOffset;
+						// Additive 模式：使用满权重的偏移
+						// AdjustParams 中的偏移已经被当前权重缩放过了，需要还原到满权重
+						float CurrentWeight = Adjust->GetCurrentBlendWeight();
+						FRotator FullWeightOffset = (CurrentWeight > KINDA_SMALL_NUMBER)
+							? AdjustParams.ArmRotationOffset * (1.0f / CurrentWeight)
+							: AdjustParams.ArmRotationOffset;
+						AdjustedArmRotation = CurrentArmRotation + FullWeightOffset;
 					}
 
 					// 将 ArmRotation 转换为 ControlRotation
