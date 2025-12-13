@@ -1,23 +1,23 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Components/NamiCameraComponent.h"
-#include "LogNamiCamera.h"
-#include "LogNamiCameraMacros.h"
+#include "Logging/LogNamiCamera.h"
+#include "Logging/LogNamiCameraMacros.h"
 #include "Camera/CameraModifier.h"
-#include "Modes/NamiCameraModeBase.h"
-#include "Modes/Templates/NamiFollowCameraMode.h"
+#include "CameraModes/NamiCameraModeBase.h"
+#include "CameraModes/NamiFollowCameraMode.h"
 #include "Components/NamiPlayerCameraManager.h"
-#include "Structs/View/NamiCameraView.h"
-#include "Structs/Pipeline/NamiCameraPipelineContext.h"
-#include "Settings/NamiCameraSettings.h"
-#include "Features/NamiCameraFeature.h"
-#include "Adjusts/NamiCameraAdjust.h"
-#include "Libraries/NamiCameraMath.h"
+#include "Data/NamiCameraView.h"
+#include "Data/NamiCameraPipelineContext.h"
+#include "DevelopSetting/NamiCameraSettings.h"
+#include "CameraFeatures/NamiCameraFeature.h"
+#include "CameraAdjust/NamiCameraAdjust.h"
+#include "Math/NamiCameraMath.h"
 #include "GameplayTagContainer.h"
-#include "NamiCameraTags.h"
+#include "Data/NamiCameraTags.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
-#include "Debug/NamiCameraDebugInfo.h"
+#include "Data/NamiCameraDebugInfo.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// FNamiCameraModeHandle
@@ -209,6 +209,17 @@ FNamiCameraModeHandle UNamiCameraComponent::PushCameraModeUsingInstance(UNamiCam
 	}
 
 	OnPushCameraMode.Broadcast(CameraModeInstance);
+
+	// Mode 切换时，混出所有活跃的 CameraAdjust，避免叠加在新 Mode 上导致位置错误
+	for (UNamiCameraAdjust* Adjust : CameraAdjustStack)
+	{
+		if (IsValid(Adjust) && !Adjust->IsBlendingOut() && !Adjust->IsFullyInactive())
+		{
+			Adjust->RequestDeactivate(false);  // false = 平滑混出
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraModeUsingInstance] Blending out %s due to mode switch"),
+				*Adjust->GetClass()->GetName());
+		}
+	}
 
 	// 准备ModeHandle
 	FNamiCameraModeHandle ModeHandle;

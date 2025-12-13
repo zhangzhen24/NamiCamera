@@ -2,11 +2,13 @@
 
 #include "Components/NamiSpringArm.h"
 #include "CollisionQueryParams.h"
+#include "DrawDebugHelpers.h"
 #include "WorldCollision.h"
+#include "Math/NamiCameraMath.h"
 #include "Engine/World.h"
 #include "PhysicsEngine/PhysicsSettings.h"
-#include "DrawDebugHelpers.h"
-#include "Libraries/NamiCameraMath.h"
+
+#include UE_INLINE_GENERATED_CPP_BY_NAME(NamiSpringArm)
 
 //////////////////////////////////////////////////////////////////////////
 // FNamiSpringArm

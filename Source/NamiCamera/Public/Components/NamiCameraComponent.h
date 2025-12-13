@@ -3,13 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Structs/Stack/NamiCameraModeStack.h"
-#include "Structs/Mode/NamiCameraModeHandle.h"
-#include "Structs/Mode/NamiCameraModeStackEntry.h"
-#include "Structs/Pipeline/NamiCameraPipelineContext.h"
-#include "Adjusts/NamiCameraAdjustParams.h"
+#include "Data/NamiCameraModeStack.h"
+#include "Data/NamiCameraModeHandle.h"
+#include "Data/NamiCameraModeStackEntry.h"
+#include "Data/NamiCameraPipelineContext.h"
+#include "CameraAdjust/NamiCameraAdjustParams.h"
 #include "Camera/CameraComponent.h"
-#include "Modes/NamiCameraModeBase.h"
+#include "CameraModes/NamiCameraModeBase.h"
 #include "NamiCameraComponent.generated.h"
 
 // 前向声明
