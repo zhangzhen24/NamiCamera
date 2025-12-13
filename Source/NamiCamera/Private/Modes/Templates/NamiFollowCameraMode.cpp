@@ -21,7 +21,7 @@ void UNamiFollowCameraMode::Activate_Implementation()
 	bInitialized = false;
 }
 
-FVector UNamiFollowCameraMode::ApplyPivotLocationOffset(const FVector& InBasePivot) const
+FVector UNamiFollowCameraMode::ApplyPivotLocationOffset(const FVector &InBasePivot) const
 {
 	FVector Result = InBasePivot;
 
@@ -34,11 +34,11 @@ FVector UNamiFollowCameraMode::ApplyPivotLocationOffset(const FVector& InBasePiv
 		{
 			// 获取控制器旋转（ControlRotation）
 			FRotator ControlRotation = FRotator::ZeroRotator;
-			UNamiCameraComponent* CameraComp = GetCameraComponent();
+			UNamiCameraComponent *CameraComp = GetCameraComponent();
 			if (IsValid(CameraComp))
 			{
 				// 优先从 Owner Pawn 获取
-				APawn* OwnerPawn = CameraComp->GetOwnerPawn();
+				APawn *OwnerPawn = CameraComp->GetOwnerPawn();
 				if (IsValid(OwnerPawn))
 				{
 					ControlRotation = OwnerPawn->GetControlRotation();
@@ -46,7 +46,7 @@ FVector UNamiFollowCameraMode::ApplyPivotLocationOffset(const FVector& InBasePiv
 				else
 				{
 					// 尝试从 PlayerController 获取
-					APlayerController* PC = CameraComp->GetOwnerPlayerController();
+					APlayerController *PC = CameraComp->GetOwnerPlayerController();
 					if (IsValid(PC))
 					{
 						ControlRotation = PC->GetControlRotation();
@@ -331,11 +331,11 @@ FRotator UNamiFollowCameraMode::GetPrimaryTargetRotation() const
 
 FRotator UNamiFollowCameraMode::GetControlRotation_Implementation() const
 {
-	UNamiCameraComponent* CameraComp = GetCameraComponent();
+	UNamiCameraComponent *CameraComp = GetCameraComponent();
 	if (CameraComp)
 	{
 		// 优先从 Owner Pawn 获取
-		APawn* OwnerPawn = CameraComp->GetOwnerPawn();
+		APawn *OwnerPawn = CameraComp->GetOwnerPawn();
 		if (IsValid(OwnerPawn))
 		{
 			FRotator ControlRot = OwnerPawn->GetControlRotation();
@@ -345,7 +345,7 @@ FRotator UNamiFollowCameraMode::GetControlRotation_Implementation() const
 		}
 
 		// 尝试从 PlayerController 获取
-		APlayerController* PC = CameraComp->GetOwnerPlayerController();
+		APlayerController *PC = CameraComp->GetOwnerPlayerController();
 		if (IsValid(PC))
 		{
 			FRotator ControlRot = PC->GetControlRotation();
@@ -360,7 +360,7 @@ FRotator UNamiFollowCameraMode::GetControlRotation_Implementation() const
 }
 
 FRotator UNamiFollowCameraMode::ApplyRotationConstraints(
-	const FRotator& InRotation,
+	const FRotator &InRotation,
 	bool bApplyPitchLimit,
 	float InMinPitch,
 	float InMaxPitch,
@@ -392,4 +392,3 @@ FRotator UNamiFollowCameraMode::ApplyRotationConstraints(
 	// 归一化到 0-360 度
 	return FNamiCameraMath::NormalizeRotatorTo360(Result);
 }
-

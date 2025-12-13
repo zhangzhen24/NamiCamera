@@ -192,18 +192,22 @@ public:
 	/**
 	 * 推送相机调整器（通过类创建实例）
 	 * @param AdjustClass 调整器类
-	 * @return 创建的调整器实例
+	 * @param DuplicatePolicy 同类重复处理策略（默认保持现有，防止跳变）
+	 * @return 创建的调整器实例，如果策略为KeepExisting且已存在则返回现有实例
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Adjust")
-	UNamiCameraAdjust* PushCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass);
+	UNamiCameraAdjust* PushCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass,
+		ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
 
 	/**
 	 * 推送相机调整器（使用已存在的实例）
 	 * @param AdjustInstance 调整器实例
+	 * @param DuplicatePolicy 同类重复处理策略（默认保持现有，防止跳变）
 	 * @return 是否成功推送
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Nami Camera|Adjust")
-	bool PushCameraAdjustInstance(UNamiCameraAdjust* AdjustInstance);
+	bool PushCameraAdjustInstance(UNamiCameraAdjust* AdjustInstance,
+		ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
 
 	/**
 	 * 移除相机调整器

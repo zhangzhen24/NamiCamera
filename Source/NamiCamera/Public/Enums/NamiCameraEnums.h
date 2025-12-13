@@ -154,3 +154,23 @@ enum class ENamiCameraAdjustState : uint8
 	/** 混合退出中 */
 	BlendingOut UMETA(DisplayName = "混合退出"),
 };
+
+/**
+ * 相机调整重复处理策略
+ * 当推送同类 Adjust 时的处理方式
+ */
+UENUM(BlueprintType)
+enum class ENamiCameraAdjustDuplicatePolicy : uint8
+{
+	/** 保持现有：不推送新的，返回现有实例（防止跳变） */
+	KeepExisting UMETA(DisplayName = "保持现有"),
+
+	/** 替换（平滑）：混出现有的，推送新的 */
+	Replace UMETA(DisplayName = "替换"),
+
+	/** 强制替换：立即移除现有的，推送新的（可能跳变） */
+	ForceReplace UMETA(DisplayName = "强制替换"),
+
+	/** 允许重复：允许同类多个实例同时存在 */
+	AllowDuplicate UMETA(DisplayName = "允许重复"),
+};

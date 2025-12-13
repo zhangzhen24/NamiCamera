@@ -12,6 +12,7 @@
 #include "Settings/NamiCameraSettings.h"
 #include "Features/NamiCameraFeature.h"
 #include "Adjusts/NamiCameraAdjust.h"
+#include "Libraries/NamiCameraMath.h"
 #include "GameplayTagContainer.h"
 #include "NamiCameraTags.h"
 #include "DrawDebugHelpers.h"
@@ -827,17 +828,18 @@ void UNamiCameraComponent::ProcessControllerSync(float DeltaTime, const FNamiCam
 		}
 
 		// 旋转平滑混合
+		// 使用四元数插值（QInterpTo）代替 RInterpTo，自动处理最短路径，避免 ±180° 跳变
 		if (ControlRotationBlendSpeed > 0.0f)
 		{
-			CurrentControlRotation = FMath::RInterpTo(
-				CurrentControlRotation,
-				DesiredCtrlRot,
-				DeltaTime,
-				ControlRotationBlendSpeed);
+			FQuat CurrentQuat = CurrentControlRotation.Quaternion();
+			FQuat DesiredQuat = DesiredCtrlRot.Quaternion();
+			FQuat ResultQuat = FMath::QInterpTo(CurrentQuat, DesiredQuat, DeltaTime, ControlRotationBlendSpeed);
+			// 归一化到 0-360° 范围，确保与系统其他部分一致
+			CurrentControlRotation = FNamiCameraMath::NormalizeRotatorTo360(ResultQuat.Rotator());
 		}
 		else
 		{
-			CurrentControlRotation = DesiredCtrlRot;
+			CurrentControlRotation = FNamiCameraMath::NormalizeRotatorTo360(DesiredCtrlRot);
 		}
 	}
 
@@ -889,17 +891,18 @@ void UNamiCameraComponent::ProcessSmoothing(float DeltaTime, const FNamiCameraVi
 	}
 
 	// 旋转平滑混合（球面插值）
+	// 使用四元数插值（QInterpTo）代替 RInterpTo，自动处理最短路径，避免 ±180° 跳变
 	if (RotationBlendSpeed > 0.0f)
 	{
-		CurrentActualView.Rotation = FMath::RInterpTo(
-			CurrentActualView.Rotation,
-			TargetPOV.Rotation,
-			DeltaTime,
-			RotationBlendSpeed);
+		FQuat CurrentQuat = CurrentActualView.Rotation.Quaternion();
+		FQuat TargetQuat = TargetPOV.Rotation.Quaternion();
+		FQuat ResultQuat = FMath::QInterpTo(CurrentQuat, TargetQuat, DeltaTime, RotationBlendSpeed);
+		// 归一化到 0-360° 范围，确保与系统其他部分一致
+		CurrentActualView.Rotation = FNamiCameraMath::NormalizeRotatorTo360(ResultQuat.Rotator());
 	}
 	else
 	{
-		CurrentActualView.Rotation = TargetPOV.Rotation; // 瞬切
+		CurrentActualView.Rotation = FNamiCameraMath::NormalizeRotatorTo360(TargetPOV.Rotation); // 瞬切
 	}
 
 	// FOV 平滑混合
@@ -953,12 +956,47 @@ void UNamiCameraComponent::PostProcessPipeline(float DeltaTime, const FNamiCamer
 
 // ========== Camera Adjust 实现 ==========
 
-UNamiCameraAdjust* UNamiCameraComponent::PushCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass)
+UNamiCameraAdjust* UNamiCameraComponent::PushCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass,
+	ENamiCameraAdjustDuplicatePolicy DuplicatePolicy)
 {
 	if (!IsValid(AdjustClass))
 	{
 		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::PushCameraAdjust] AdjustClass is null"));
 		return nullptr;
+	}
+
+	// 检查同类 Adjust 是否已存在
+	UNamiCameraAdjust* ExistingAdjust = FindCameraAdjustByClass(AdjustClass);
+	if (ExistingAdjust)
+	{
+		switch (DuplicatePolicy)
+		{
+		case ENamiCameraAdjustDuplicatePolicy::KeepExisting:
+			// 保持现有，返回已存在的实例
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, keeping existing (KeepExisting policy)"),
+				*AdjustClass->GetName());
+			return ExistingAdjust;
+
+		case ENamiCameraAdjustDuplicatePolicy::Replace:
+			// 平滑替换：混出现有的
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, replacing with blend out (Replace policy)"),
+				*AdjustClass->GetName());
+			PopCameraAdjust(ExistingAdjust, false);
+			break;
+
+		case ENamiCameraAdjustDuplicatePolicy::ForceReplace:
+			// 强制替换：立即移除现有的
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, force replacing (ForceReplace policy)"),
+				*AdjustClass->GetName());
+			PopCameraAdjust(ExistingAdjust, true);
+			break;
+
+		case ENamiCameraAdjustDuplicatePolicy::AllowDuplicate:
+			// 允许重复：继续创建新实例
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, allowing duplicate (AllowDuplicate policy)"),
+				*AdjustClass->GetName());
+			break;
+		}
 	}
 
 	// 创建实例
@@ -969,8 +1007,8 @@ UNamiCameraAdjust* UNamiCameraComponent::PushCameraAdjust(TSubclassOf<UNamiCamer
 		return nullptr;
 	}
 
-	// 推送实例
-	if (!PushCameraAdjustInstance(AdjustInstance))
+	// 推送实例（使用 AllowDuplicate 策略，因为我们已经在上面处理了重复检查）
+	if (!PushCameraAdjustInstance(AdjustInstance, ENamiCameraAdjustDuplicatePolicy::AllowDuplicate))
 	{
 		return nullptr;
 	}
@@ -978,7 +1016,8 @@ UNamiCameraAdjust* UNamiCameraComponent::PushCameraAdjust(TSubclassOf<UNamiCamer
 	return AdjustInstance;
 }
 
-bool UNamiCameraComponent::PushCameraAdjustInstance(UNamiCameraAdjust* AdjustInstance)
+bool UNamiCameraComponent::PushCameraAdjustInstance(UNamiCameraAdjust* AdjustInstance,
+	ENamiCameraAdjustDuplicatePolicy DuplicatePolicy)
 {
 	if (!IsValid(AdjustInstance))
 	{
@@ -986,11 +1025,44 @@ bool UNamiCameraComponent::PushCameraAdjustInstance(UNamiCameraAdjust* AdjustIns
 		return false;
 	}
 
-	// 检查是否已存在
+	// 检查同一实例是否已存在
 	if (CameraAdjustStack.Contains(AdjustInstance))
 	{
 		NAMI_LOG_COMPONENT(Warning, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] AdjustInstance already exists in stack"));
 		return false;
+	}
+
+	// 检查同类 Adjust 是否已存在
+	UClass* AdjustClass = AdjustInstance->GetClass();
+	UNamiCameraAdjust* ExistingAdjust = FindCameraAdjustByClass(AdjustClass);
+	if (ExistingAdjust)
+	{
+		switch (DuplicatePolicy)
+		{
+		case ENamiCameraAdjustDuplicatePolicy::KeepExisting:
+			// 保持现有，拒绝新实例
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] %s already exists, rejecting new instance (KeepExisting policy)"),
+				*AdjustClass->GetName());
+			return false;
+
+		case ENamiCameraAdjustDuplicatePolicy::Replace:
+			// 平滑替换：混出现有的
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] %s already exists, replacing with blend out (Replace policy)"),
+				*AdjustClass->GetName());
+			PopCameraAdjust(ExistingAdjust, false);
+			break;
+
+		case ENamiCameraAdjustDuplicatePolicy::ForceReplace:
+			// 强制替换：立即移除现有的
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] %s already exists, force replacing (ForceReplace policy)"),
+				*AdjustClass->GetName());
+			PopCameraAdjust(ExistingAdjust, true);
+			break;
+
+		case ENamiCameraAdjustDuplicatePolicy::AllowDuplicate:
+			// 允许重复：继续推送新实例
+			break;
+		}
 	}
 
 	// 初始化
@@ -1009,7 +1081,7 @@ bool UNamiCameraComponent::PushCameraAdjustInstance(UNamiCameraAdjust* AdjustIns
 	CameraAdjustStack.Insert(AdjustInstance, InsertIndex);
 
 	NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] Pushed %s (Priority: %d) at index %d"),
-		*AdjustInstance->GetClass()->GetName(), AdjustInstance->Priority, InsertIndex);
+		*AdjustClass->GetName(), AdjustInstance->Priority, InsertIndex);
 
 	return true;
 }
@@ -1258,14 +1330,13 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 				if (!Adjust->IsBlendOutSynced())
 				{
 					// 计算混出前相机臂的实际位置
-					// 注意：此时权重已经开始衰减，需要用满权重(1.0)来计算混出前的位置
+					// 混出前是 Active 状态（权重=1.0），相机就在目标位置
 					FRotator AdjustedArmRotation = CurrentArmRotation;
 					if (AdjustParams.ArmRotationBlendMode == ENamiCameraAdjustBlendMode::Override)
 					{
-						// Override 模式：使用满权重计算 Slerp，这是混出前相机的实际位置
-						FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
-						FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, 1.0f); // 使用满权重
-						AdjustedArmRotation = InterpolatedQuat.Rotator();
+						// Override 模式：混出前相机就在缓存的目标位置
+						// 不需要 Slerp 计算，直接使用目标旋转
+						AdjustedArmRotation = Adjust->GetCachedWorldArmRotationTarget();
 					}
 					else
 					{
@@ -1279,17 +1350,38 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 					}
 
 					// 将 ArmRotation 转换为 ControlRotation
+					// 注意：不使用 Normalize()，避免 ±180° 边界跳变
 					FRotator AdjustedControlRotation = AdjustedArmRotation;
 					AdjustedControlRotation.Yaw += 180.0f;
 					AdjustedControlRotation.Pitch = -AdjustedControlRotation.Pitch;
-					AdjustedControlRotation.Normalize();
+
+					// 获取同步前的状态
+					APlayerController* PC = GetOwnerPlayerController();
+					FRotator OldControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
 
 					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] ========== 混出同步 =========="));
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] CurrentArmRotation: P=%.2f Y=%.2f"),
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] 混出前 View:"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+						CurrentView.CameraLocation.X, CurrentView.CameraLocation.Y, CurrentView.CameraLocation.Z);
+					UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+						CurrentView.CameraRotation.Pitch, CurrentView.CameraRotation.Yaw, CurrentView.CameraRotation.Roll);
+					UE_LOG(LogNamiCamera, Log, TEXT("  PivotLocation: X=%.2f Y=%.2f Z=%.2f"),
+						CurrentView.PivotLocation.X, CurrentView.PivotLocation.Y, CurrentView.PivotLocation.Z);
+					UE_LOG(LogNamiCamera, Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f"),
+						CurrentView.ControlRotation.Pitch, CurrentView.ControlRotation.Yaw);
+					UE_LOG(LogNamiCamera, Log, TEXT("  FOV: %.2f"), CurrentView.FOV);
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] 相机臂信息:"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentArmRotation(Mode输出): P=%.2f Y=%.2f"),
 						CurrentArmRotation.Pitch, CurrentArmRotation.Yaw);
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] AdjustedArmRotation: P=%.2f Y=%.2f"),
+					UE_LOG(LogNamiCamera, Log, TEXT("  TargetArmRotation(缓存目标): P=%.2f Y=%.2f"),
+						Adjust->GetCachedWorldArmRotationTarget().Pitch, Adjust->GetCachedWorldArmRotationTarget().Yaw);
+					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedArmRotation(同步值): P=%.2f Y=%.2f"),
 						AdjustedArmRotation.Pitch, AdjustedArmRotation.Yaw);
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] AdjustedControlRotation: P=%.2f Y=%.2f"),
+					UE_LOG(LogNamiCamera, Log, TEXT("  BlendWeight: %.3f"), Weight);
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] ControlRotation:"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(同步前): P=%.2f Y=%.2f"),
+						OldControlRotation.Pitch, OldControlRotation.Yaw);
+					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedControlRotation(同步值): P=%.2f Y=%.2f"),
 						AdjustedControlRotation.Pitch, AdjustedControlRotation.Yaw);
 
 					// 同步 ControlRotation
@@ -1297,12 +1389,24 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 					bPendingControlRotationSync = true;
 					PendingControlRotation = AdjustedControlRotation;
 
+					// 记录同步后的状态
+					FRotator NewControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
+					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] 同步后:"));
+					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(同步后): P=%.2f Y=%.2f"),
+						NewControlRotation.Pitch, NewControlRotation.Yaw);
+
 					// 标记已同步
 					Adjust->MarkBlendOutSynced();
-				}
 
-				// 混出期间跳过 ArmRotation 混合，玩家自由控制
-				bSkipArmRotation = true;
+					// 【关键】这一帧继续应用 CameraAdjust 偏移
+					// 因为 Mode 是用旧的 ControlRotation 计算的
+					// 下一帧 Mode 才会用新同步的 ControlRotation
+				}
+				else
+				{
+					// 第二帧及以后：Mode 已经用新 ControlRotation，跳过偏移
+					bSkipArmRotation = true;
+				}
 			}
 			// 检查输入打断（仅在未被打断时检测）
 			else if (!Adjust->IsInputInterrupted())
@@ -1327,21 +1431,22 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 						// Override 模式：计算 Slerp 混合后的旋转
 						FQuat TargetQuat = Adjust->GetCachedWorldArmRotationTarget().Quaternion();
 						FQuat InterpolatedQuat = FQuat::Slerp(CurrentArmQuat, TargetQuat, Weight);
-						AdjustedArmRotation = InterpolatedQuat.Rotator();
+						// 归一化到 0-360° 范围，避免 ±180° 边界跳变
+						AdjustedArmRotation = FNamiCameraMath::NormalizeRotatorTo360(InterpolatedQuat.Rotator());
 					}
 					else
 					{
-						// Additive 模式：加上偏移
-						AdjustedArmRotation = CurrentArmRotation + AdjustParams.ArmRotationOffset;
+						// Additive 模式：加上偏移，然后归一化
+						AdjustedArmRotation = FNamiCameraMath::NormalizeRotatorTo360(CurrentArmRotation + AdjustParams.ArmRotationOffset);
 					}
 
 					// 将 ArmRotation 转换为 ControlRotation
 					// ArmRotation 是从 Pivot 到相机的方向
 					// ControlRotation 是相机看的方向（朝向角色）= ArmRotation + 180°
+					// 注意：不使用 Normalize()，避免 ±180° 边界跳变
 					FRotator AdjustedControlRotation = AdjustedArmRotation;
 					AdjustedControlRotation.Yaw += 180.0f;
-					AdjustedControlRotation.Pitch = -AdjustedControlRotation.Pitch; // Pitch 反转
-					AdjustedControlRotation.Normalize();
+					AdjustedControlRotation.Pitch = -AdjustedControlRotation.Pitch;
 
 					// 记录打断前的状态
 					APlayerController* PC = GetOwnerPlayerController();
@@ -1464,9 +1569,10 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 	}
 
 	// 将四元数转换回欧拉角偏移
+	// 归一化到 0-360° 范围，确保与系统其他部分一致，避免 ±180° 边界跳变
 	if (bHasArmRotation)
 	{
-		CombinedParams.ArmRotationOffset = CombinedArmRotationQuat.Rotator();
+		CombinedParams.ArmRotationOffset = FNamiCameraMath::NormalizeRotatorTo360(CombinedArmRotationQuat.Rotator());
 		CombinedParams.MarkArmRotationModified();
 	}
 
@@ -1493,9 +1599,11 @@ void UNamiCameraComponent::ApplyAdjustParamsToView(const FNamiCameraAdjustParams
 	}
 
 	// 应用相机旋转偏移
+	// 归一化到 0-360° 范围，避免 ±180° 边界跳变
 	if (Params.HasFlag(ENamiCameraAdjustModifiedFlags::CameraRotationOffset))
 	{
-		InOutView.CameraRotation = (FQuat(InOutView.CameraRotation) * FQuat(Params.CameraRotationOffset)).Rotator();
+		InOutView.CameraRotation = FNamiCameraMath::NormalizeRotatorTo360(
+			(FQuat(InOutView.CameraRotation) * FQuat(Params.CameraRotationOffset)).Rotator());
 	}
 
 	// 应用Pivot偏移
