@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Qiu, Inc. All Rights Reserved.
 
 #include "Components/NamiCameraComponent.h"
 #include "Logging/LogNamiCamera.h"
@@ -13,6 +13,7 @@
 #include "CameraFeatures/NamiCameraFeature.h"
 #include "CameraAdjust/NamiCameraAdjust.h"
 #include "Math/NamiCameraMath.h"
+#include "Stat/NamiCameraStats.h"
 #include "GameplayTagContainer.h"
 #include "Data/NamiCameraTags.h"
 #include "DrawDebugHelpers.h"
@@ -74,8 +75,6 @@ void UNamiCameraComponent::BeginPlay()
 	OwnerPlayerCameraManager = OwnerPlayerController ? Cast<ANamiPlayerCameraManager>(OwnerPlayerController->PlayerCameraManager) : nullptr;
 	
 	// 初始化缓存
-	CachedPlayerController = OwnerPlayerController;
-	CachedPlayerCameraManager = OwnerPlayerCameraManager;
 	
 	if (!OwnerPlayerCameraManager)
 	{
@@ -100,6 +99,8 @@ void UNamiCameraComponent::BeginPlay()
 
 void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &DesiredView)
 {
+	SCOPE_CYCLE_COUNTER(STAT_NamiCamera_GetCameraView);
+
 	// ========== 【阶段 0：预处理层】 ==========
 	FNamiCameraPipelineContext Context;
 	if (!PreProcessPipeline(DeltaTime, Context))
@@ -147,21 +148,16 @@ APawn *UNamiCameraComponent::GetOwnerPawn() const
 
 APlayerController *UNamiCameraComponent::GetOwnerPlayerController() const
 {
-	// 如果缓存有效，直接返回
-	if (CachedPlayerController.IsValid())
+	// 优先返回缓存的 OwnerPlayerController
+	if (IsValid(OwnerPlayerController))
 	{
-		return CachedPlayerController.Get();
+		return OwnerPlayerController.Get();
 	}
 
-	// 否则从 Owner 获取并缓存
+	// 如果缓存失效，从 OwnerPawn 获取
 	if (IsValid(OwnerPawn))
 	{
-		APlayerController* PC = Cast<APlayerController>(OwnerPawn->GetController());
-		if (PC)
-		{
-			CachedPlayerController = PC;
-			return PC;
-		}
+		return Cast<APlayerController>(OwnerPawn->GetController());
 	}
 
 	return nullptr;
@@ -169,21 +165,16 @@ APlayerController *UNamiCameraComponent::GetOwnerPlayerController() const
 
 ANamiPlayerCameraManager *UNamiCameraComponent::GetOwnerPlayerCameraManager() const
 {
-	// 如果缓存有效，直接返回
-	if (CachedPlayerCameraManager.IsValid())
+	// 优先返回缓存的 OwnerPlayerCameraManager
+	if (IsValid(OwnerPlayerCameraManager))
 	{
-		return CachedPlayerCameraManager.Get();
+		return OwnerPlayerCameraManager.Get();
 	}
 
-	// 否则从 PlayerController 获取并缓存
+	// 如果缓存失效，从 PlayerController 获取
 	if (APlayerController* PC = GetOwnerPlayerController())
 	{
-		ANamiPlayerCameraManager* Manager = Cast<ANamiPlayerCameraManager>(PC->PlayerCameraManager);
-		if (Manager)
-		{
-			CachedPlayerCameraManager = Manager;
-			return Manager;
-		}
+		return Cast<ANamiPlayerCameraManager>(PC->PlayerCameraManager);
 	}
 
 	return nullptr;
@@ -655,6 +646,7 @@ TArray<UNamiCameraFeature*> UNamiCameraComponent::GetFeaturesByTags(const FGamep
 	return Result;
 }
 
+#if WITH_EDITOR
 void UNamiCameraComponent::DrawDebugCameraInfo(const FNamiCameraView& View) const
 {
 	if (!UNamiCameraSettings::ShouldEnableDrawDebug())
@@ -728,6 +720,7 @@ void UNamiCameraComponent::DrawDebugCameraInfo(const FNamiCameraView& View) cons
 		NAMI_LOG_CAMERA_INFO(Log, TEXT("%s"), *DebugInfo.ToString());
 	}
 }
+#endif // WITH_EDITOR
 
 // ========== 相机管线处理（重构后的阶段方法） ==========
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Qiu, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,6 +16,7 @@ struct NAMICAMERA_API FNamiSpringArm
 {
 	GENERATED_BODY()
 
+	
 public:
 	FNamiSpringArm();
 

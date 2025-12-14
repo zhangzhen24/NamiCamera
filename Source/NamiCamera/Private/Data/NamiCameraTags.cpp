@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Qiu, Inc. All Rights Reserved.
 #include "Data/NamiCameraTags.h"
 
 // ==================== Feature 生命周期管理 ====================

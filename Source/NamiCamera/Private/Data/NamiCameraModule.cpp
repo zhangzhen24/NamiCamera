@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Qiu, Inc. All Rights Reserved.
 
 #include "Data/NamiCameraModule.h"
 #include "Modules/ModuleManager.h"

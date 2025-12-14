@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Qiu, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,7 +25,7 @@ public:
 	 * @param Modifier 要添加的修改器
 	 * @return 是否成功添加
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Nami Camera",
+	UFUNCTION(BlueprintCallable, Category = "NamiCamera",
 			  meta = (Tooltip = "添加相机修改器到相机管理器"))
 	bool AddCameraModifier(UCameraModifier* Modifier);
 };

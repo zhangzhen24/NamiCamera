@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright Qiu, Inc. All Rights Reserved.
 
 #include "CameraModes/NamiCameraModeBase.h"
 #include "Animation/BlendSpace.h"
