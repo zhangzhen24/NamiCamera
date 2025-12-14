@@ -31,6 +31,12 @@ void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp
 		return;
 	}
 
+	// 相机调整仅在客户端执行，服务器没有相机
+	if (MeshComp->GetWorld() && MeshComp->GetWorld()->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
+
 	// 获取相机组件
 	UNamiCameraComponent* CameraComp = GetCameraComponent(MeshComp);
 	if (!CameraComp)
@@ -88,6 +94,12 @@ void UAnimNotifyState_CameraAdjust::NotifyEnd(USkeletalMeshComponent* MeshComp, 
 	const FAnimNotifyEventReference& EventReference)
 {
 	Super::NotifyEnd(MeshComp, Animation, EventReference);
+
+	// 相机调整仅在客户端执行，服务器没有相机
+	if (MeshComp && MeshComp->GetWorld() && MeshComp->GetWorld()->GetNetMode() == NM_DedicatedServer)
+	{
+		return;
+	}
 
 	// 停止调整器（开始BlendOut）
 	if (ActiveAdjust.IsValid())
