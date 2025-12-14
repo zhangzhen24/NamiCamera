@@ -260,4 +260,4 @@ Clear separation between input and output:
 
 ## License
 
-Copyright Epic Games, Inc. All Rights Reserved.
+Copyright Qiu, Inc. All Rights Reserved.

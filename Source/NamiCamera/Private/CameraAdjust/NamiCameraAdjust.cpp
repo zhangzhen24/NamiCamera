@@ -9,17 +9,17 @@
 
 UNamiCameraAdjust::UNamiCameraAdjust()
 	: BlendInTime(0.3f)
-	, BlendOutTime(0.3f)
-	, BlendType(ENamiCameraBlendType::EaseInOut)
-	, BlendCurve(nullptr)
-	, BlendMode(ENamiCameraAdjustBlendMode::Additive)
-	, Priority(0)
-	, CurrentBlendWeight(0.f)
-	, BlendTimer(0.f)
-	, State(ENamiCameraAdjustState::Inactive)
-	, ActiveTime(0.f)
-	, CustomInputValue(0.f)
-	, bInputInterrupted(false)
+	  , BlendOutTime(0.3f)
+	  , BlendType(ENamiCameraBlendType::EaseInOut)
+	  , BlendCurve(nullptr)
+	  , BlendMode(ENamiCameraAdjustBlendMode::Additive)
+	  , Priority(0)
+	  , CurrentBlendWeight(0.f)
+	  , BlendTimer(0.f)
+	  , State(ENamiCameraAdjustState::Inactive)
+	  , ActiveTime(0.f)
+	  , CustomInputValue(0.f)
+	  , bInputInterrupted(false)
 {
 }
 
@@ -130,8 +130,8 @@ void UNamiCameraAdjust::TriggerInputInterrupt()
 bool UNamiCameraAdjust::IsActive() const
 {
 	return State == ENamiCameraAdjustState::BlendingIn ||
-		   State == ENamiCameraAdjustState::Active ||
-		   State == ENamiCameraAdjustState::BlendingOut;
+		State == ENamiCameraAdjustState::Active ||
+		State == ENamiCameraAdjustState::BlendingOut;
 }
 
 UNamiCameraComponent* UNamiCameraAdjust::GetOwnerComponent() const
@@ -172,9 +172,9 @@ void UNamiCameraAdjust::CacheArmRotationTarget()
 	CachedWorldArmRotationTarget.Normalize();
 
 	UE_LOG(LogNamiCamera, Log, TEXT("[CacheArmRotationTarget] ActorForward: P=%.2f Y=%.2f, Target: P=%.2f Y=%.2f, Result: P=%.2f Y=%.2f"),
-		ActorForwardRotation.Pitch, ActorForwardRotation.Yaw,
-		ArmRotationTarget.Pitch, ArmRotationTarget.Yaw,
-		CachedWorldArmRotationTarget.Pitch, CachedWorldArmRotationTarget.Yaw);
+	       ActorForwardRotation.Pitch, ActorForwardRotation.Yaw,
+	       ArmRotationTarget.Pitch, ArmRotationTarget.Yaw,
+	       CachedWorldArmRotationTarget.Pitch, CachedWorldArmRotationTarget.Yaw);
 }
 
 void UNamiCameraAdjust::UpdateBlending(float DeltaTime)
@@ -186,11 +186,26 @@ void UNamiCameraAdjust::UpdateBlending(float DeltaTime)
 		State = ENamiCameraAdjustState::BlendingIn;
 		BlendTimer = 0.f;
 		ActiveTime = 0.f;
-		CacheArmRotationTarget();  // 在激活时刻缓存目标臂旋转
+		CacheArmRotationTarget(); // 在激活时刻缓存目标臂旋转
 		OnActivate();
-		// Fall through to BlendingIn
-		[[fallthrough]];
 
+		if (BlendInTime <= 0.f)
+		{
+			CurrentBlendWeight = 1.f;
+			State = ENamiCameraAdjustState::Active;
+		}
+		else
+		{
+			BlendTimer += DeltaTime;
+			float LinearAlpha = FMath::Clamp(BlendTimer / BlendInTime, 0.f, 1.f);
+			CurrentBlendWeight = CalculateBlendAlpha(LinearAlpha);
+
+			if (LinearAlpha >= 1.f)
+			{
+				State = ENamiCameraAdjustState::Active;
+			}
+		}
+		break;
 	case ENamiCameraAdjustState::BlendingIn:
 		if (BlendInTime <= 0.f)
 		{

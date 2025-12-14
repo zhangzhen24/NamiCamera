@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "CameraAdjust/NamiCameraAdjustParams.h"
 #include "Animation/AnimNotifies/AnimNotifyState.h"
+#include "CameraAdjust/NamiCameraAdjustParams.h"
 #include "AnimNotifyState_CameraAdjust.generated.h"
 
 class UNamiCameraAdjust;

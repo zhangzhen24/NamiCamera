@@ -1118,8 +1118,8 @@ bool UNamiCameraComponent::PopCameraAdjust(UNamiCameraAdjust* AdjustInstance, bo
 	{
 		CameraAdjustStack.RemoveAt(Index);
 	}
+	
 	// 否则会在 CleanupInactiveCameraAdjusts 中移除
-
 	return true;
 }
 

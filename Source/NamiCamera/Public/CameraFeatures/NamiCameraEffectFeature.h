@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Data/NamiCameraEnums.h"
 #include "CameraFeatures/NamiCameraFeature.h"
+#include "Data/NamiCameraEnums.h"
 #include "NamiCameraEffectFeature.generated.h"
 
 /**
