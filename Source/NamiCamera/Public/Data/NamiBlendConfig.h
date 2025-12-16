@@ -21,7 +21,7 @@ struct NAMICAMERA_API FNamiBlendConfig
 
 	/** 混合类型 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blending")
-	ENamiCameraBlendType BlendType = ENamiCameraBlendType::EaseInOut;
+	ENamiCameraBlendType BlendType = ENamiCameraBlendType::Linear;
 
 	/** 自定义混合曲线 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Blending",
