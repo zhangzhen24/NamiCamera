@@ -23,6 +23,7 @@ public class NamiCamera : ModuleRules
 				"DeveloperSettings",
 				"GameplayTags",
 				"InputCore",
+				"EnhancedInput",
 			}
 		);
 	}

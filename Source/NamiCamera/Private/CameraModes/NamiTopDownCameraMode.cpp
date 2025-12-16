@@ -1,13 +1,17 @@
 // Copyright Qiu, Inc. All Rights Reserved.
 
 #include "CameraModes/NamiTopDownCameraMode.h"
+#include "CameraFeatures/NamiCameraEdgeScrollFeature.h"
+#include "CameraFeatures/NamiCameraKeyboardPanFeature.h"
+#include "CameraFeatures/NamiCameraMouseDragPanFeature.h"
+#include "Components/NamiCameraComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
 
 UNamiTopDownCameraMode::UNamiTopDownCameraMode()
 {
-	// 参考 EnhancedCameraSystem 的 TopCameraMode 默认值
+	// 俯视角配置
 	CameraPitch = -55.0f;
 	CameraYaw = 0.0f;
 	CameraRoll = 0.0f;
@@ -21,75 +25,106 @@ UNamiTopDownCameraMode::UNamiTopDownCameraMode()
 	MouseTrackingStrength = 0.3f;
 	MaxMouseTrackingOffset = 500.0f;
 
-	// 弹簧臂配置
-	SpringArm.SpringArmLength = 950.0f;
-	SpringArm.bDoCollisionTest = false; // 禁用碰撞检测（俯视角通常不需要）
-	SpringArm.bInheritPitch = false;     // 不继承 Pitch
-	SpringArm.bInheritRoll = false;      // 不继承 Roll
-	SpringArm.bInheritYaw = true;        // 允许继承 Yaw（可旋转）
+	// 相机距离配置（替代 SpringArm）
+	CameraDistance = 950.0f;
 
 	// 平滑设置
 	BlendConfig.BlendTime = 0.5f;
 	BlendConfig.BlendType = ENamiCameraBlendType::EaseInOut;
+
+	// 缩放配置（ARPG风格）
+	bEnableMouseWheelZoom = true;
+	MinZoomDistance = 400.0f;
+	MaxZoomDistance = 2000.0f;
+	ZoomSpeed = 150.0f;
+	ZoomSmoothSpeed = 10.0f;
+	CurrentZoomDistance = CameraDistance;
+	TargetZoomDistance = CameraDistance;
+
+	// 平移配置（ARPG风格）
+	PanOffset = FVector::ZeroVector;
+	MaxPanDistance = 1000.0f;
+	PanReturnSpeed = 5.0f;
+	bAutoReturnToCharacter = true;
+
+	// 自动设置配置
+	bAutoSetOwnerAsPrimaryTarget = true;
+
+	// 清除父类的 CameraOffset（我们使用 CameraDistance 和固定角度）
+	CameraOffset = FVector::ZeroVector;
+}
+
+void UNamiTopDownCameraMode::Activate_Implementation()
+{
+	Super::Activate_Implementation();
+
+	// 初始化缩放距离
+	CurrentZoomDistance = CameraDistance;
+	TargetZoomDistance = CameraDistance;
+
+	// 如果启用自动设置目标，将相机所属的Pawn设为PrimaryTarget
+	if (bAutoSetOwnerAsPrimaryTarget)
+	{
+		if (UNamiCameraComponent* CameraComp = GetCameraComponent())
+		{
+			if (APawn* OwnerPawn = CameraComp->GetOwnerPawn())
+			{
+				// 只在还没有目标的情况下自动设置
+				if (GetPrimaryTarget() == nullptr)
+				{
+					SetPrimaryTarget(OwnerPawn);
+					UE_LOG(LogTemp, Log, TEXT("TopDownCameraMode: Auto-set primary target to %s"), *OwnerPawn->GetName());
+				}
+			}
+		}
+	}
 }
 
 FNamiCameraView UNamiTopDownCameraMode::CalculateView_Implementation(float DeltaTime)
 {
-	// 首先调用父类逻辑（处理弹簧臂、跟随等）
-	FNamiCameraView View = Super::CalculateView_Implementation(DeltaTime);
+	// 1. 计算 Pivot 位置（目标点）
+	FVector BasePivot = CalculatePivotLocation(DeltaTime);
+	FVector TargetPivot = ApplyPivotLocationOffset(BasePivot);
 
-	// 如果启用鼠标追踪，调整 Pivot
-	if (bEnableMouseTracking)
+	// 2. 应用 PanOffset
+	if (!PanOffset.IsNearlyZero())
 	{
-		View.PivotLocation = TraceMousePosition(View.PivotLocation);
+		FVector ModifiedPivot = TargetPivot + PanOffset;
 
-		// 需要重新计算 SpringArm，因为 Pivot 位置改变了
-		FTransform InitialTransform;
-		InitialTransform.SetLocation(View.PivotLocation);
-		InitialTransform.SetRotation(FRotator(CameraPitch, CameraYaw, CameraRoll).Quaternion());
-
-		// 收集忽略 Actor
-		TArray<AActor*> IgnoreActors;
-		for (const FNamiFollowTarget& Target : Targets)
+		// 限制最大偏移距离
+		const FVector OffsetDelta = ModifiedPivot - TargetPivot;
+		if (OffsetDelta.Size() > MaxPanDistance)
 		{
-			if (Target.Target.IsValid())
-			{
-				IgnoreActors.AddUnique(Target.Target.Get());
-			}
+			ModifiedPivot = TargetPivot + OffsetDelta.GetSafeNormal() * MaxPanDistance;
+			// 更新 PanOffset 以反映限制后的值
+			PanOffset = ModifiedPivot - TargetPivot;
 		}
 
-		// 重新执行 SpringArm 计算
-		SpringArm.Tick(this, DeltaTime, IgnoreActors, InitialTransform, FVector::ZeroVector);
-		const FTransform& CameraTransform = SpringArm.GetCameraTransform();
-		View.CameraLocation = CameraTransform.GetLocation();
-		View.CameraRotation = CameraTransform.Rotator();
+		TargetPivot = ModifiedPivot;
 	}
 
-	// 构建固定的旋转
+	// 3. 应用鼠标追踪
+	if (bEnableMouseTracking)
+	{
+		TargetPivot = TraceMousePosition(TargetPivot);
+	}
+
+	// 4. 构建固定的旋转角度
 	FRotator DesiredRotation = FRotator(CameraPitch, CameraYaw, CameraRoll);
 
-	// 如果允许部分旋转控制
-	if (!bIgnorePitch)
-	{
-		// 可以从 View.ControlRotation 获取玩家输入的 Pitch
-		DesiredRotation.Pitch = View.ControlRotation.Pitch;
-	}
+	// 5. 根据旋转和距离计算相机位置
+	// 相机位置 = Pivot - 旋转方向 * 距离
+	FVector CameraDirection = DesiredRotation.Vector();
+	FVector CameraLocation = TargetPivot - CameraDirection * CurrentZoomDistance;
 
-	if (!bIgnoreRoll)
-	{
-		// 可以从 View.ControlRotation 获取玩家输入的 Roll
-		DesiredRotation.Roll = View.ControlRotation.Roll;
-	}
-
-	// 如果 Yaw 也使用控制旋转（可选）
-	if (!bIgnorePitch && !bIgnoreRoll)
-	{
-		// 只有当两个都不忽略时，才使用控制旋转的 Yaw
-		DesiredRotation.Yaw = View.ControlRotation.Yaw;
-	}
-
-	// 更新相机旋转为固定角度
+	// 6. 构建视图
+	FNamiCameraView View;
+	View.PivotLocation = TargetPivot;
+	View.CameraLocation = CameraLocation;
 	View.CameraRotation = DesiredRotation;
+	View.ControlLocation = TargetPivot;
+	View.ControlRotation = DesiredRotation;
+	View.FOV = DefaultFOV;
 
 	return View;
 }
@@ -143,4 +178,153 @@ FVector UNamiTopDownCameraMode::TraceMousePosition(const FVector& BasePivot) con
 	}
 
 	return BasePivot;
+}
+
+void UNamiTopDownCameraMode::Tick_Implementation(float DeltaTime)
+{
+	Super::Tick_Implementation(DeltaTime);
+
+	// 更新缩放
+	UpdateZoom(DeltaTime);
+
+	// 更新平移偏移
+	UpdatePanOffset(DeltaTime);
+}
+
+void UNamiTopDownCameraMode::UpdateZoom(float DeltaTime)
+{
+	if (!bEnableMouseWheelZoom)
+	{
+		return;
+	}
+
+	// 平滑插值到目标距离
+	if (FMath::Abs(CurrentZoomDistance - TargetZoomDistance) > 0.1f)
+	{
+		CurrentZoomDistance = FMath::FInterpTo(
+			CurrentZoomDistance,
+			TargetZoomDistance,
+			DeltaTime,
+			ZoomSmoothSpeed
+		);
+	}
+}
+
+void UNamiTopDownCameraMode::ZoomIn(float Amount)
+{
+	if (!bEnableMouseWheelZoom)
+	{
+		return;
+	}
+
+	// 向内缩放（减小距离）
+	TargetZoomDistance = FMath::Clamp(
+		TargetZoomDistance - Amount * ZoomSpeed,
+		MinZoomDistance,
+		MaxZoomDistance
+	);
+}
+
+void UNamiTopDownCameraMode::ZoomOut(float Amount)
+{
+	if (!bEnableMouseWheelZoom)
+	{
+		return;
+	}
+
+	// 向外缩放（增加距离）
+	TargetZoomDistance = FMath::Clamp(
+		TargetZoomDistance + Amount * ZoomSpeed,
+		MinZoomDistance,
+		MaxZoomDistance
+	);
+}
+
+void UNamiTopDownCameraMode::SetTargetZoomDistance(float Distance)
+{
+	if (!bEnableMouseWheelZoom)
+	{
+		return;
+	}
+
+	// 直接设置目标距离（带范围限制）
+	TargetZoomDistance = FMath::Clamp(
+		Distance,
+		MinZoomDistance,
+		MaxZoomDistance
+	);
+}
+
+void UNamiTopDownCameraMode::UpdatePanOffset(float DeltaTime)
+{
+	// 不在平移时自动返回角色中心
+	if (bAutoReturnToCharacter && !IsBeingPanned() && PanOffset.Size() > 1.0f)
+	{
+		PanOffset = FMath::VInterpTo(
+			PanOffset,
+			FVector::ZeroVector,
+			DeltaTime,
+			PanReturnSpeed
+		);
+	}
+}
+
+void UNamiTopDownCameraMode::AddPanOffset(const FVector& Offset)
+{
+	PanOffset += Offset;
+
+	// 立即限制在最大距离内
+	if (PanOffset.Size() > MaxPanDistance)
+	{
+		PanOffset = PanOffset.GetSafeNormal() * MaxPanDistance;
+	}
+}
+
+void UNamiTopDownCameraMode::ResetPanOffset()
+{
+	PanOffset = FVector::ZeroVector;
+}
+
+bool UNamiTopDownCameraMode::IsBeingPanned() const
+{
+	// 检查所有平移Feature是否活动
+	const TArray<UNamiCameraFeature*>& CameraFeatures = GetFeatures();
+
+	for (const UNamiCameraFeature* Feature : CameraFeatures)
+	{
+		if (!Feature || !Feature->IsEnabled())
+		{
+			continue;
+		}
+
+		// 检查边缘滚动
+		if (const UNamiCameraEdgeScrollFeature* EdgeScroll = Cast<UNamiCameraEdgeScrollFeature>(Feature))
+		{
+			FVector2D Direction;
+			if (EdgeScroll->IsMouseAtScreenEdge(Direction))
+			{
+				return true;
+			}
+		}
+
+		// 检查键盘平移
+		if (const UNamiCameraKeyboardPanFeature* KeyboardPan = Cast<UNamiCameraKeyboardPanFeature>(Feature))
+		{
+			if (KeyboardPan->HasActivePanInput())
+			{
+				return true;
+			}
+		}
+
+		// 检查鼠标拖拽
+		if (const UNamiCameraMouseDragPanFeature* MouseDrag = Cast<UNamiCameraMouseDragPanFeature>(Feature))
+		{
+			if (MouseDrag->IsDragging())
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
