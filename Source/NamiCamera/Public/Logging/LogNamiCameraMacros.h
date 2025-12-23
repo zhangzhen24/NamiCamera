@@ -3,9 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Logging/LogNamiCamera.h"
 #include "DevelopSetting/NamiCameraSettings.h"
 #include "Engine/Engine.h"
+#include "Logging/LogNamiCamera.h"
 
 /**
  * Nami相机系统日志宏
@@ -124,6 +124,19 @@
 			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
 		} \
 		if (UNamiCameraSettings::ShouldLogModeBlendOnScreen()) \
+		{ \
+			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
+		} \
+	} while(0)
+
+// ========== 输入打断日志（CameraAdjust 输入打断和混出同步）==========
+#define NAMI_LOG_INPUT_INTERRUPT(Verbosity, Format, ...) \
+	do { \
+		if (UNamiCameraSettings::ShouldLogInputInterrupt()) \
+		{ \
+			NAMI_LOG_TO_LOG(Verbosity, Format, ##__VA_ARGS__); \
+		} \
+		if (UNamiCameraSettings::ShouldLogInputInterruptOnScreen()) \
 		{ \
 			NAMI_LOG_TO_SCREEN(Format, ##__VA_ARGS__); \
 		} \

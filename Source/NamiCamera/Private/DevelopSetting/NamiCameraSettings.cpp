@@ -58,6 +58,12 @@ bool UNamiCameraSettings::ShouldLogModeBlend()
 	return Settings && Settings->bEnableModeBlendLog;
 }
 
+bool UNamiCameraSettings::ShouldLogInputInterrupt()
+{
+	const UNamiCameraSettings* Settings = Get();
+	return Settings && Settings->bEnableInputInterruptLog;
+}
+
 // ========== DrawDebug 检查方法 ==========
 
 bool UNamiCameraSettings::ShouldEnableDrawDebug()
@@ -90,6 +96,11 @@ bool UNamiCameraSettings::ShouldDrawArmInfo()
 	return Settings && Settings->bEnableDrawDebug && Settings->bDrawArmInfo;
 }
 
+bool UNamiCameraSettings::ShouldEnableDualFocusDebug()
+{
+	const UNamiCameraSettings* Settings = Get();
+	return Settings && Settings->bEnableDualFocusDebug;
+}
 
 float UNamiCameraSettings::GetDrawDebugDuration()
 {
@@ -139,6 +150,12 @@ bool UNamiCameraSettings::ShouldLogModeBlendOnScreen()
 {
 	const UNamiCameraSettings* Settings = Get();
 	return Settings && Settings->bEnableModeBlendLogOnScreen;
+}
+
+bool UNamiCameraSettings::ShouldLogInputInterruptOnScreen()
+{
+	const UNamiCameraSettings* Settings = Get();
+	return Settings && Settings->bEnableInputInterruptLogOnScreen;
 }
 
 float UNamiCameraSettings::GetOnScreenLogDuration()

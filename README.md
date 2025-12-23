@@ -1,263 +1,284 @@
-# Nami Camera System
+# Nami Camera 相机系统
 
-A powerful, modular camera system for Unreal Engine featuring mode stacking, feature-based extensions, and runtime adjustments.
+一个功能强大的模块化虚幻引擎相机系统，支持模式堆栈、处理器扩展和运行时调整。
 
-## Features
+## 核心特性
 
-- **Mode Stack System**: Stack multiple camera modes with automatic blending
-- **Feature-Based Architecture**: Extend camera behavior through composable features
-- **Runtime Adjustments**: Dynamic camera parameter modifications with blend control
-- **Animation Integration**: Timeline-driven camera adjustments via Animation Notifies
-- **Pipeline Processing**: Structured camera calculation pipeline
-- **Debug Visualization**: Built-in debug drawing and logging
+- **模式堆栈系统**：支持多相机模式同时激活，自动混合过渡
+- **统一处理器架构**：通过 Processor 统一管理持久效果和临时效果
+- **计算器模式**：Mode 内部使用 Calculator 计算视图各组成部分
+- **动画集成**：通过动画通知实现时间轴驱动的相机处理
+- **管线化处理**：结构化的相机计算管线，6 阶段处理
+- **调试可视化**：内置调试绘制和日志系统
 
-## Quick Start
+## 快速开始
 
-### 1. Basic Setup
+### 1. 基础设置
 
-1. Add `UNamiCameraComponent` to your Pawn/Character
-2. Set `ANamiPlayerCameraManager` as your PlayerCameraManagerClass
-3. Configure a default camera mode (e.g., `UNamiThirdPersonCamera`)
+1. 在你的 Pawn/Character 上添加 `UNamiCameraComponent`
+2. 设置 `ANamiPlayerCameraManager` 作为 PlayerCameraManagerClass
+3. 配置默认相机模式（如 `UNamiThirdPersonCamera`）
 
-**Example C++ Setup:**
+**C++ 设置示例：**
 
 ```cpp
-// In your PlayerController
+// 在 PlayerController 中
 AMyPlayerController::AMyPlayerController()
 {
     PlayerCameraManagerClass = ANamiPlayerCameraManager::StaticClass();
 }
 
-// In your Character
+// 在 Character 中
 AMyCharacter::AMyCharacter()
 {
-    // Create camera component
+    // 创建相机组件
     CameraComponent = CreateDefaultSubobject<UNamiCameraComponent>(TEXT("CameraComponent"));
     CameraComponent->SetupAttachment(RootComponent);
 
-    // Set default camera mode
+    // 设置默认相机模式
     CameraComponent->DefaultCameraMode = UNamiThirdPersonCamera::StaticClass();
 }
 ```
 
-### 2. Using Camera Modes
+### 2. 使用相机模式
 
-Camera modes define how the camera behaves. You can push and pop modes at runtime:
+相机模式定义相机的行为方式。可以在运行时推送和弹出模式：
 
 ```cpp
-// Push a new camera mode (e.g., aiming mode)
+// 推送新的相机模式（如瞄准模式）
 FNamiCameraModeHandle Handle = CameraComponent->PushCameraMode(UMyAimingMode::StaticClass());
 
-// Pop the mode when done
+// 完成后弹出模式
 CameraComponent->PopCameraMode(Handle);
 ```
 
-### 3. Adding Features
+### 3. 添加处理器（Processor）
 
-Features extend camera modes with additional functionality:
+处理器为相机提供效果扩展。系统提供两种类型的处理器：
 
-```cpp
-// Add a camera shake feature
-UNamiCameraShakeFeature* ShakeFeature = NewObject<UNamiCameraShakeFeature>(CameraMode);
-CameraMode->AddFeature(ShakeFeature);
-
-// Or add globally to affect all modes
-CameraComponent->AddGlobalFeature(ShakeFeature);
-```
-
-### 4. Runtime Adjustments
-
-Adjustments allow you to modify camera parameters at runtime with automatic blending:
+**持久处理器**（Persistent Processor）：持续生效，直到手动移除
 
 ```cpp
-// Push an adjustment (e.g., for cinematic effect)
-UNamiCameraAdjust* Adjust = CameraComponent->PushCameraAdjust(UMyCinematicAdjust::StaticClass());
+// 添加相机震动处理器
+UNamiCameraShakeProcessor* ShakeProcessor = NewObject<UNamiCameraShakeProcessor>(this);
+CameraComponent->AddProcessor(ShakeProcessor);
 
-// It will blend in, stay active, and blend out based on your settings
-// Remove manually if needed
-CameraComponent->PopCameraAdjust(Adjust);
+// 移除处理器
+CameraComponent->RemoveProcessor(ShakeProcessor);
 ```
 
-## Architecture
+**可混合处理器**（Blendable Processor）：自动混入混出的临时效果
 
-### System Layers
+```cpp
+// 播放电影效果（自动混入）
+UNamiCameraBlendableProcessor* Processor = CameraComponent->PlayProcessor(UMyCinematicProcessor::StaticClass());
 
-The camera system is organized in clear architectural layers:
-
-```
-┌─────────────────────────────────────────┐
-│         Components (Entry Point)        │  ← NamiCameraComponent, PlayerCameraManager
-├─────────────────────────────────────────┤
-│         Mode Stack (Core Logic)         │  ← Mode calculation & blending
-├─────────────────────────────────────────┤
-│    Features (Modular Extensions)        │  ← Effects, shake, debug
-├─────────────────────────────────────────┤
-│   Adjustments (Runtime Modifications)   │  ← Dynamic parameter changes
-└─────────────────────────────────────────┘
+// 停止处理器（自动混出）
+CameraComponent->StopProcessor(Processor);
 ```
 
-### Camera Pipeline
+## 系统架构
 
-Each frame, the camera view is calculated through these stages:
+### 极简两层模型（新人只需理解 2 个概念）
 
-1. **Pre-Process**: Initialize context, validate component
-2. **Mode Stack**: Calculate and blend all active modes
-3. **Global Features**: Apply global effects (shake, procedural effects)
-4. **Adjustments**: Apply runtime parameter modifications
-5. **Controller Sync**: Update PlayerController rotation
-6. **Smoothing**: Blend from current to target view
-7. **Post-Process**: Debug drawing, logging
+```
+┌────────────────────────────────────────┐
+│  CameraMode（相机模式）                 │  ← 选择相机类型
+│    - ThirdPerson, DualFocus, FPS 等    │
+└────────────────────────────────────────┘
+                    ↓
+┌────────────────────────────────────────┐
+│  CameraProcessor（相机处理器）          │  ← 添加/播放效果
+│    - AddProcessor()  持久效果           │
+│    - PlayProcessor() 临时效果           │
+└────────────────────────────────────────┘
 
-## Folder Structure
+【高级用户额外了解】
+
+┌────────────────────────────────────────┐
+│  Calculator（计算器）                   │  ← Mode 内部实现
+│    - 隐藏在 Mode 内部，新人无需了解     │
+└────────────────────────────────────────┘
+```
+
+### 使用场景对照
+
+| 场景 | API | 说明 |
+|------|-----|------|
+| 选择相机类型 | `SetCameraMode(ThirdPersonMode)` | 基础设置 |
+| 添加碰撞检测 | `AddProcessor(CollisionProcessor)` | 持久生效 |
+| 添加震动配置 | `AddProcessor(ShakeProcessor)` | 持久生效 |
+| 技能释放FOV变化 | `PlayProcessor(SkillFOVProcessor)` | 播放一次 |
+| 过场动画相机 | `PlayProcessor(CinematicProcessor)` | 播放一次 |
+
+### 相机管线
+
+每帧通过以下阶段计算相机视图：
+
+1. **预处理**：初始化上下文，验证组件
+2. **模式堆栈**：计算并混合所有激活模式
+3. **持久处理器**：应用持久效果（震动、碰撞检测）
+4. **可混合处理器**：应用临时参数修改
+5. **控制器同步**：更新 PlayerController 旋转
+6. **平滑过渡**：从当前位置平滑过渡到目标位置
+7. **后处理**：调试绘制、日志输出
+
+## 目录结构
 
 ```
 Source/NamiCamera/
-├── Core/                   # Foundation (module, enums, logging, math)
-│   ├── Logging/           # Log categories and macros
-│   └── Math/              # Camera-specific math utilities
-├── Components/            # Camera components (entry point)
-├── Modes/                 # Mode system
-│   ├── Base/             # Base classes and infrastructure
-│   ├── Data/             # Data structures (View, State, Context)
-│   ├── Templates/        # Abstract templates for inheritance
-│   └── Presets/          # Ready-to-use implementations
-├── Features/              # Feature system
-│   └── Effects/          # Effect features (shake, etc.)
-└── Adjustments/           # Adjustment system
-    ├── Base/             # Core adjustment classes
-    ├── Animation/        # Animation notify integration
-    └── Config/           # Configuration settings
+├── Public/
+│   ├── Animation/          # 动画通知集成
+│   ├── Calculators/        # 计算器（Mode 内部使用）
+│   │   ├── Target/         # 目标计算器
+│   │   ├── Position/       # 位置计算器
+│   │   ├── Rotation/       # 旋转计算器
+│   │   └── FOV/            # FOV 计算器
+│   ├── CameraModes/        # 相机模式
+│   ├── Components/         # 相机组件（入口点）
+│   ├── Data/               # 数据结构（View、State、Context）
+│   ├── DevelopSetting/     # 开发设置
+│   ├── Interfaces/         # 接口
+│   ├── Logging/            # 日志类别和宏
+│   ├── Math/               # 相机数学工具
+│   ├── Processors/         # 处理器系统
+│   │   ├── Persistent/     # 持久处理器
+│   │   └── Blendable/      # 可混合处理器
+│   └── Stat/               # 性能统计
+└── Private/                # 实现文件
 ```
 
-## Documentation
+## 创建自定义内容
 
-- **[Quick Start](Documentation/QuickStart.md)** - Detailed getting started guide
-- **[Architecture](Documentation/Architecture.md)** - System design and concepts
-- **[API Reference](Documentation/API.md)** - Key classes and methods
+### 自定义相机模式
 
-## Examples
-
-See the `Modes/Presets/` folder for production-ready camera mode examples:
-
-- **NamiThirdPersonCamera** - Standard third-person camera with configurable offset
-- **NamiShoulderCamera** - Over-the-shoulder camera for aiming
-- **NamiSpringArmCameraMode** - Template with spring arm collision detection
-
-## Creating Custom Content
-
-### Custom Camera Mode
-
-1. Inherit from `UNamiFollowCameraMode` (easiest) or `UNamiCameraModeBase`
-2. Override `CalculatePivotLocation()` to define what the camera looks at
-3. Configure blend settings in the class defaults
+1. 继承 `UNamiComposableCameraMode`（最简单）或 `UNamiCameraModeBase`
+2. 重写 `CalculatePivotLocation()` 定义相机看向的位置
+3. 在类默认值中配置混合设置
 
 ```cpp
 UCLASS()
-class UMyCustomMode : public UNamiFollowCameraMode
+class UMyCustomMode : public UNamiCameraModeBase
 {
     GENERATED_BODY()
 
 protected:
     virtual FVector CalculatePivotLocation_Implementation(float DeltaTime) override
     {
-        // Return where the camera should focus
+        // 返回相机应该聚焦的位置
         return GetCameraComponent()->GetOwnerPawn()->GetActorLocation();
     }
 };
 ```
 
-### Custom Feature
+### 自定义持久处理器
 
-1. Inherit from `UNamiCameraFeature`
-2. Override `ApplyToViewWithContext()` to modify the camera view
+1. 继承 `UNamiCameraPersistentProcessor`
+2. 重写 `Process()` 修改相机视图
 
 ```cpp
 UCLASS()
-class UMyCustomFeature : public UNamiCameraFeature
+class UMyPersistentProcessor : public UNamiCameraPersistentProcessor
 {
     GENERATED_BODY()
 
 protected:
-    virtual void ApplyToViewWithContext_Implementation(
+    virtual void Process_Implementation(
         FNamiCameraView& InOutView,
-        float DeltaTime,
-        const FNamiCameraPipelineContext& Context) override
+        float DeltaTime) override
     {
-        // Modify InOutView here
-        InOutView.Location += FVector(0, 0, 100); // Example: offset up
+        // 在这里修改 InOutView
+        InOutView.CameraLocation += FVector(0, 0, 100); // 示例：向上偏移
     }
 };
 ```
 
-### Custom Adjustment
+### 自定义可混合处理器
 
-1. Inherit from `UNamiCameraAdjust`
-2. Override `CalculateAdjustParams()` to provide parameter modifications
+1. 继承 `UNamiCameraBlendableProcessor`
+2. 重写 `CalculateProcessorParams()` 提供参数修改
 
 ```cpp
 UCLASS()
-class UMyAdjustment : public UNamiCameraAdjust
+class UMyBlendableProcessor : public UNamiCameraBlendableProcessor
 {
     GENERATED_BODY()
 
 protected:
-    virtual FNamiCameraAdjustParams CalculateAdjustParams_Implementation(
-        float DeltaTime,
-        const FRotator& CurrentArmRotation,
-        const FNamiCameraView& CurrentView) override
+    virtual FNamiCameraProcessorParams CalculateProcessorParams_Implementation(
+        float DeltaTime) override
     {
-        FNamiCameraAdjustParams Params;
-        Params.ArmRotationOffset = FRotator(0, 45, 0); // Rotate 45 degrees
-        Params.BlendMode = ENamiCameraAdjustBlendMode::Additive;
+        FNamiCameraProcessorParams Params;
+        Params.ArmRotationOffset = FRotator(0, 45, 0); // 旋转 45 度
+        Params.ArmRotationBlendMode = ENamiCameraProcessorBlendMode::Additive;
+        Params.MarkArmRotationModified();
         return Params;
     }
 };
 ```
 
-## Key Concepts
+## 核心概念
 
-### Mode Stack
+### 模式堆栈
 
-- Multiple modes can be active simultaneously
-- Each mode has a blend weight (0-1) based on its blend configuration
-- Final view is a weighted average of all active modes
-- Modes can be pushed/popped at any time
+- 多个模式可同时激活
+- 每个模式有混合权重（0-1），基于混合配置
+- 最终视图是所有激活模式的加权平均
+- 可随时推送/弹出模式
 
-### Features
+### 处理器（Processor）
 
-- Modular extensions that modify camera views
-- Can be attached to specific modes or globally to the component
-- Processed in priority order
-- Support lifecycle (Initialize, Activate, Deactivate, Tick)
+**持久处理器**（Persistent Processor）：
+- 通过 `AddProcessor()` 添加
+- 持续生效直到 `RemoveProcessor()` 移除
+- 适用于：碰撞检测、震动、锁定目标等
 
-### Adjustments
+**可混合处理器**（Blendable Processor）：
+- 通过 `PlayProcessor()` 播放
+- 自动混入/混出，支持配置时间
+- 可由曲线驱动（速度、时间、自定义参数）
+- 动画通知集成，实现时间轴控制
+- 支持玩家输入打断
+- 适用于：技能 FOV、过场动画、临时效果
 
-- Provide runtime parameter modifications (rotation offset, arm length, etc.)
-- Support smooth blend in/out with configurable durations
-- Two blend modes: **Additive** (offset) and **Override** (target)
-- Can be driven by curves (speed-based, time-based, custom parameters)
-- Animation notify integration for timeline control
+### 计算器（Calculator）
 
-### State Separation
+- Mode 内部使用，负责计算视图各组成部分
+- 新人无需了解，高级用户可自定义
+- 类型：
+  - **TargetCalculator**：计算 PivotLocation
+  - **PositionCalculator**：计算 CameraLocation
+  - **RotationCalculator**：计算 CameraRotation
+  - **FOVCalculator**：计算 FOV
 
-Clear separation between input and output:
-- **Input State** (`FNamiCameraState`): What we're looking at (targets, velocities, player input)
-- **Output View** (`FNamiCameraView`): Where the camera is (location, rotation, FOV)
-- **Pipeline Context**: Data passed between pipeline stages
+### 状态分离
 
-## Performance Notes
+输入和输出的清晰分离：
+- **输入状态** (`FNamiCameraState`)：我们在看什么（目标、速度、玩家输入）
+- **输出视图** (`FNamiCameraView`)：相机在哪里（位置、旋转、FOV）
+- **管线上下文**：管线各阶段间传递的数据
 
-- The system is designed for game thread only (no async/parallel processing)
-- All processing happens during `GetCameraView()` each frame
-- Feature and adjustment lookups are optimized with internal maps
-- Lightweight mode switching with object pooling
+## 调试功能
 
-## Version
+在 **项目设置 > Plugins > NamiCamera** 中配置：
 
-- **Version**: 1.0
-- **Author**: 秋 (Qiu)
-- **Engine Compatibility**: Unreal Engine 5.x
+- **日志开关**：分类控制日志输出（效果、模式混合、输入打断等）
+- **屏幕日志**：输出调试信息到屏幕
+- **DrawDebug**：可视化 PivotLocation、CameraLocation、相机方向等
 
-## License
+## 性能说明
+
+- 系统设计为仅在游戏线程运行（无异步/并行处理）
+- 所有处理在每帧 `GetCameraView()` 中完成
+- Processor 查找已优化为内部 Map
+- 轻量级模式切换，使用对象池
+
+## 版本信息
+
+- **版本**：2.0
+- **作者**：秋 (Qiu)
+- **引擎兼容**：Unreal Engine 5.x
+
+## 许可证
 
 Copyright Qiu, Inc. All Rights Reserved.

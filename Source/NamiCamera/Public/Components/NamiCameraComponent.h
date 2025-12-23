@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Camera/CameraComponent.h"
 
-// NamiCamera module headers (sorted alphabetically)
+// NamiCamera 模块头文件（按字母顺序排列）
 #include "CameraAdjust/NamiCameraAdjustParams.h"
 #include "CameraModes/NamiCameraModeBase.h"
 #include "Data/NamiCameraModeHandle.h"
@@ -110,89 +110,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modifiers")
 	TArray<UCameraModifier *> GetActivateCameraModifiers() const;
 
-	// ========== Global Features ==========
-
-	/** 添加全局 Feature（独立于 Mode 管理） */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Features")
-	void AddGlobalFeature(UNamiCameraFeature* Feature);
-
-	/** 移除全局 Feature */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Features")
-	bool RemoveGlobalFeature(UNamiCameraFeature* Feature);
-
-	/** 通过名称查找全局 Feature */
-	UFUNCTION(BlueprintPure, Category = "NamiCamera|Features")
-	UNamiCameraFeature* FindGlobalFeatureByName(FName FeatureName) const;
-
-	/** 获取所有全局 Feature */
-	UFUNCTION(BlueprintPure, Category = "NamiCamera|Features")
-	const TArray<UNamiCameraFeature*>& GetGlobalFeatures() const { return GlobalFeatures; }
-
-	/** 通过 Tag 移除全局 Feature */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Features")
-	void RemoveGlobalFeaturesByTag(const FGameplayTag& Tag, bool bDeactivateFirst = true);
-
-	/** 通过 Tag 容器移除全局 Feature（匹配任意 Tag） */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Features")
-	void RemoveGlobalFeaturesByTags(const FGameplayTagContainer& TagContainer, bool bDeactivateFirst = true);
-
-	/** 移除所有 Stay 类型的全局 Feature（便捷方法） */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Features")
-	void RemoveStayGlobalFeatures();
-
-	// ========== Feature 查找（全局 + 当前激活Mode） ==========
-
-	/**
-	 * 通过类型查找 Feature（先查找全局Feature，再查找当前激活Mode的Feature）
-	 * @tparam T Feature类型
-	 * @return 找到的Feature，如果不存在则返回nullptr
-	 */
-	template<typename T>
-	T* GetFeature() const
-	{
-		// 先查找全局Feature
-		for (UNamiCameraFeature* Feature : GlobalFeatures)
-		{
-			if (T* TypedFeature = Cast<T>(Feature))
-			{
-				return TypedFeature;
-			}
-		}
-		
-		// 再查找当前激活Mode的Feature
-		if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
-		{
-			return ActiveMode->template GetFeature<T>();
-		}
-		
-		return nullptr;
-	}
-
-	/**
-	 * 通过名称查找 Feature（先查找全局Feature，再查找当前激活Mode的Feature）
-	 * @param FeatureName Feature名称
-	 * @return 找到的Feature，如果不存在则返回nullptr
-	 */
-	UFUNCTION(BlueprintPure, Category = "NamiCamera|Features")
-	UNamiCameraFeature* GetFeatureByName(FName FeatureName) const;
-
-	/**
-	 * 通过 Tag 查找所有匹配的 Feature（全局 + 当前激活Mode）
-	 * @param Tag 要匹配的Tag
-	 * @return 匹配的Feature列表
-	 */
-	UFUNCTION(BlueprintPure, Category = "NamiCamera|Features")
-	TArray<UNamiCameraFeature*> GetFeaturesByTag(const FGameplayTag& Tag) const;
-
-	/**
-	 * 通过 Tag 容器查找所有匹配的 Feature（匹配任意Tag，全局 + 当前激活Mode）
-	 * @param TagContainer Tag容器
-	 * @return 匹配的Feature列表
-	 */
-	UFUNCTION(BlueprintPure, Category = "NamiCamera|Features")
-	TArray<UNamiCameraFeature*> GetFeaturesByTags(const FGameplayTagContainer& TagContainer) const;
-
-	// ========== Camera Adjust ==========
+	// ========== Adjust API ==========
 
 	/**
 	 * 推送相机调整器（通过类创建实例）
@@ -200,37 +118,37 @@ public:
 	 * @param DuplicatePolicy 同类重复处理策略（默认保持现有，防止跳变）
 	 * @return 创建的调整器实例，如果策略为KeepExisting且已存在则返回现有实例
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments")
-	UNamiCameraAdjust* PushCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass,
+	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments", meta = (DisplayName = "Push Adjust"))
+	UNamiCameraAdjust* PushAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass,
 		ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
 
 	/**
-	 * 推送相机调整器（使用已存在的实例）
+	 * 推送相机调整器实例
 	 * @param AdjustInstance 调整器实例
-	 * @param DuplicatePolicy 同类重复处理策略（默认保持现有，防止跳变）
+	 * @param DuplicatePolicy 同类重复处理策略
 	 * @return 是否成功推送
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments")
-	bool PushCameraAdjustInstance(UNamiCameraAdjust* AdjustInstance,
+	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments", meta = (DisplayName = "Push Adjust Instance"))
+	bool PushAdjustInstance(UNamiCameraAdjust* AdjustInstance,
 		ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
 
 	/**
-	 * 移除相机调整器
-	 * @param AdjustInstance 要移除的调整器
-	 * @param bForceImmediate 是否立即移除（跳过BlendOut）
-	 * @return 是否成功移除
+	 * 弹出相机调整器
+	 * @param AdjustInstance 要弹出的调整器
+	 * @param bForceImmediate 是否立即弹出（跳过BlendOut）
+	 * @return 是否成功弹出
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments")
-	bool PopCameraAdjust(UNamiCameraAdjust* AdjustInstance, bool bForceImmediate = false);
+	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments", meta = (DisplayName = "Pop Adjust"))
+	bool PopAdjust(UNamiCameraAdjust* AdjustInstance, bool bForceImmediate = false);
 
 	/**
-	 * 通过类移除相机调整器
+	 * 通过类弹出相机调整器
 	 * @param AdjustClass 调整器类
-	 * @param bForceImmediate 是否立即移除
-	 * @return 是否成功移除
+	 * @param bForceImmediate 是否立即弹出
+	 * @return 是否成功弹出
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments")
-	bool PopCameraAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass, bool bForceImmediate = false);
+	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments", meta = (DisplayName = "Pop Adjust By Class"))
+	bool PopAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass, bool bForceImmediate = false);
 
 	/**
 	 * 通过类型查找相机调整器
@@ -238,7 +156,7 @@ public:
 	 * @return 找到的调整器，如果不存在则返回nullptr
 	 */
 	template<typename T>
-	T* FindCameraAdjust() const
+	T* FindAdjust() const
 	{
 		for (UNamiCameraAdjust* Adjust : CameraAdjustStack)
 		{
@@ -256,14 +174,14 @@ public:
 	 * @return 找到的调整器
 	 */
 	UFUNCTION(BlueprintPure, Category = "NamiCamera|Adjustments")
-	UNamiCameraAdjust* FindCameraAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass) const;
+	UNamiCameraAdjust* FindAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass) const;
 
 	/**
 	 * 获取所有激活的相机调整器
 	 * @return 调整器列表
 	 */
 	UFUNCTION(BlueprintPure, Category = "NamiCamera|Adjustments")
-	const TArray<UNamiCameraAdjust*>& GetCameraAdjusts() const;
+	const TArray<UNamiCameraAdjust*>& GetAdjusts() const;
 
 	/**
 	 * 检查是否有指定类型的调整器处于激活状态
@@ -271,10 +189,10 @@ public:
 	 * @return 是否存在
 	 */
 	UFUNCTION(BlueprintPure, Category = "NamiCamera|Adjustments")
-	bool HasCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass) const;
+	bool HasAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass) const;
 
 protected:
-	/** Default camera mode used when component initializes */
+	/** 组件初始化时使用的默认相机模式 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Settings",
 		meta = (AllowPrivateAccess = "true",
 				Tooltip = "相机组件初始化时使用的默认相机模式类"))
@@ -288,19 +206,19 @@ protected:
 	UPROPERTY(BlueprintAssignable)
 	FOnPopCameraModeDelegate OnPopCameraMode;
 
-	/** Cached owner pawn reference */
+	/** 缓存的所有者 Pawn 引用 */
 	UPROPERTY(BlueprintReadOnly, Category = "NamiCamera",
 		meta = (AllowPrivateAccess = "true",
 				Tooltip = "拥有此相机组件的Pawn"))
 	TObjectPtr<APawn> OwnerPawn;
 
-	/** Cached owner player controller reference */
+	/** 缓存的所有者 PlayerController 引用 */
 	UPROPERTY(BlueprintReadOnly, Category = "NamiCamera",
 		meta = (AllowPrivateAccess = "true",
 				Tooltip = "拥有此相机组件的玩家控制器"))
 	TObjectPtr<APlayerController> OwnerPlayerController;
 
-	/** Cached owner player camera manager reference */
+	/** 缓存的所有者 PlayerCameraManager 引用 */
 	UPROPERTY(BlueprintReadOnly, Category = "NamiCamera",
 		meta = (AllowPrivateAccess = "true",
 				Tooltip = "拥有此相机组件的玩家相机管理器"))
@@ -334,11 +252,6 @@ protected:
 	 */
 	bool ProcessModeStack(float DeltaTime, const FNamiCameraPipelineContext& Context, FNamiCameraView& OutBaseView);
 
-	/**
-	 * 阶段 2：全局效果层
-	 * 应用所有全局 Features 到视图
-	 */
-	void ProcessGlobalFeatures(float DeltaTime, FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView);
 
 	/**
 	 * 阶段 2.5：相机调整层
@@ -406,19 +319,19 @@ protected:
 	/** 是否已初始化当前视图 */
 	bool bHasInitializedCurrentView = false;
 
-	/** Location blending speed (cm/s, 0 = instant, >0 = smooth) */
+	/** 位置混合速度（cm/s，0 = 瞬切，>0 = 平滑） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
 			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "10000.0",
 					  Tooltip = "相机位置混合速度。0 = 瞬切，>0 = 平滑过渡（单位：cm/s）"))
 	float LocationBlendSpeed = 0.0f;
 
-	/** Rotation blending speed (degrees/s, 0 = instant, >0 = smooth) */
+	/** 旋转混合速度（度/s，0 = 瞬切，>0 = 平滑） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
 			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0",
 					  Tooltip = "相机旋转混合速度。0 = 瞬切，>0 = 平滑过渡（单位：度/s）"))
 	float RotationBlendSpeed = 0.0f;
 
-	/** FOV blending speed (degrees/s, 0 = instant, >0 = smooth) */
+	/** FOV 混合速度（度/s，0 = 瞬切，>0 = 平滑） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
 			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0",
 					  Tooltip = "视野角混合速度。0 = 瞬切，>0 = 平滑过渡（单位：度/s）"))
@@ -435,9 +348,9 @@ protected:
 	float ControlRotationBlendSpeed = 360.0f;
 
 private:
-	/** 相机模式实例池 */
+	/** 相机模式实例池（使用 TMap 实现 O(1) 查找） */
 	UPROPERTY()
-	TArray<TObjectPtr<UNamiCameraModeBase>> CameraModeInstancePool;
+	TMap<TSubclassOf<UNamiCameraModeBase>, TObjectPtr<UNamiCameraModeBase>> CameraModeInstancePool;
 
 	/** 相机模式优先级堆栈 */
 	UPROPERTY()
@@ -446,10 +359,6 @@ private:
 	/** 混合堆栈 */
 	UPROPERTY()
 	FNamiCameraModeStack BlendingStack;
-
-	/** 全局 Feature 列表（独立于 Mode 管理） */
-	UPROPERTY()
-	TArray<TObjectPtr<UNamiCameraFeature>> GlobalFeatures;
 
 	/** 相机调整器堆栈（按优先级排序） */
 	UPROPERTY()

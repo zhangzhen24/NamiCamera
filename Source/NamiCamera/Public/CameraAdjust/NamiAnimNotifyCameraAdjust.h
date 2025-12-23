@@ -1,12 +1,10 @@
-﻿// Copyright Qiu, Inc. All Rights Reserved.
+// Copyright Qiu, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "CameraAdjust/NamiCameraAdjust.h"
 #include "NamiAnimNotifyCameraAdjust.generated.h"
-
-struct FNamiCameraAdjustParams;
 
 /**
  * AnimNotifyState 专用的相机调整器

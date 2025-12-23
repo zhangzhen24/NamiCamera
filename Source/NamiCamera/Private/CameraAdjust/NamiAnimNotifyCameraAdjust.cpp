@@ -1,6 +1,8 @@
-﻿// Copyright Qiu, Inc. All Rights Reserved.
+// Copyright Qiu, Inc. All Rights Reserved.
 
 #include "CameraAdjust/NamiAnimNotifyCameraAdjust.h"
+
+#include UE_INLINE_GENERATED_CPP_BY_NAME(NamiAnimNotifyCameraAdjust)
 
 UNamiAnimNotifyCameraAdjust::UNamiAnimNotifyCameraAdjust()
 {

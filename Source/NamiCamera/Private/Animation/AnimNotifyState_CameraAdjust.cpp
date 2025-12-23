@@ -78,7 +78,7 @@ void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp
 	Adjust->SetAdjustParams(Params);
 
 	// 推送调整器
-	if (CameraComp->PushCameraAdjustInstance(Adjust))
+	if (CameraComp->PushAdjustInstance(Adjust))
 	{
 		ActiveAdjust = Adjust;
 		UE_LOG(LogNamiCamera, Log, TEXT("[AnimNotifyState_CameraAdjust] Started camera adjust for animation: %s"),
@@ -108,7 +108,7 @@ void UAnimNotifyState_CameraAdjust::NotifyEnd(USkeletalMeshComponent* MeshComp, 
 		if (CameraComp)
 		{
 			// 使用false让它正常BlendOut，而不是立即停止
-			CameraComp->PopCameraAdjust(ActiveAdjust.Get(), false);
+			CameraComp->PopAdjust(ActiveAdjust.Get(), false);
 			UE_LOG(LogNamiCamera, Log, TEXT("[AnimNotifyState_CameraAdjust] Ended camera adjust for animation: %s"),
 				*GetNameSafe(Animation));
 		}

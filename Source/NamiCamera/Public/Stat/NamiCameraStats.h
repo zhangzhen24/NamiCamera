@@ -18,7 +18,7 @@
  * - STAT_NamiCamera_GetCameraView: 跟踪主相机视图计算的性能
  * - STAT_NamiCamera_ModeStack: 跟踪相机模式堆栈处理耗时
  * - STAT_NamiCamera_CameraAdjust: 跟踪相机调整计算耗时
- * - STAT_NamiCamera_GlobalFeatures: 跟踪全局特性应用耗时
+ * - STAT_NamiCamera_ModeComponents: 跟踪模式组件处理耗时
  * - STAT_NamiCamera_Smoothing: 跟踪相机平滑处理耗时
  */
 
@@ -42,8 +42,8 @@ DECLARE_CYCLE_STAT_EXTERN(TEXT("Mode Stack"), STAT_NamiCamera_ModeStack, STATGRO
 /** 计算相机调整所花费的时间 */
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Camera Adjust"), STAT_NamiCamera_CameraAdjust, STATGROUP_NamiCamera, NAMICAMERA_API);
 
-/** 应用全局特性所花费的时间 */
-DECLARE_CYCLE_STAT_EXTERN(TEXT("Global Features"), STAT_NamiCamera_GlobalFeatures, STATGROUP_NamiCamera, NAMICAMERA_API);
+/** 处理模式组件所花费的时间 */
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Mode Components"), STAT_NamiCamera_ModeComponents, STATGROUP_NamiCamera, NAMICAMERA_API);
 
 /** 相机平滑处理所花费的时间 */
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Smoothing"), STAT_NamiCamera_Smoothing, STATGROUP_NamiCamera, NAMICAMERA_API);

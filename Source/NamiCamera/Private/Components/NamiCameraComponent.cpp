@@ -5,12 +5,11 @@
 #include "Logging/LogNamiCameraMacros.h"
 #include "Camera/CameraModifier.h"
 #include "CameraModes/NamiCameraModeBase.h"
-#include "CameraModes/NamiFollowCameraMode.h"
+#include "CameraModes/NamiComposableCameraMode.h"
 #include "Components/NamiPlayerCameraManager.h"
 #include "Data/NamiCameraView.h"
 #include "Data/NamiCameraPipelineContext.h"
 #include "DevelopSetting/NamiCameraSettings.h"
-#include "CameraFeatures/NamiCameraFeature.h"
 #include "CameraAdjust/NamiCameraAdjust.h"
 #include "Math/NamiCameraMath.h"
 #include "Stat/NamiCameraStats.h"
@@ -49,7 +48,6 @@ UNamiCameraComponent::UNamiCameraComponent(const FObjectInitializer &ObjectIniti
 	PrimaryComponentTick.bCanEverTick = true;
 	DefaultCameraMode = nullptr; // 用户应该在 Blueprint 或 C++ 中显式设置
 
-	CameraModeInstancePool.Empty();
 	CameraModePriorityStack.Empty();
 
 	// 初始化平滑混合层状态
@@ -117,9 +115,10 @@ void UNamiCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo &Desi
 		return;
 	}
 
-	// ========== 【阶段 2：全局效果层】 ==========
+	// ========== 【阶段 2：效果处理层】 ==========
+	// 注意：ModeComponents 现在由各 CameraMode 内部处理
 	FNamiCameraView EffectView = BaseView;
-	ProcessGlobalFeatures(DeltaTime, Context, EffectView);
+	Context.EffectView = EffectView;
 
 	// ========== 【阶段 2.5：相机调整层】 ==========
 	ProcessCameraAdjusts(DeltaTime, Context, EffectView);
@@ -365,12 +364,15 @@ void UNamiCameraComponent::NotifyCameraModeInitialize(UNamiCameraModeBase *Camer
 		CameraModeInstance->Initialize(this);
 
 		// 自动设置 PrimaryTarget 为 Owner（如果相机模式支持）
-		if (UNamiFollowCameraMode *FollowMode = Cast<UNamiFollowCameraMode>(CameraModeInstance))
+		AActor *Owner = GetOwner();
+		if (IsValid(Owner))
 		{
-			AActor *Owner = GetOwner();
-			if (IsValid(Owner) && !FollowMode->GetPrimaryTarget())
+			if (UNamiComposableCameraMode *ComposableMode = Cast<UNamiComposableCameraMode>(CameraModeInstance))
 			{
-				FollowMode->SetPrimaryTarget(Owner);
+				if (!ComposableMode->GetPrimaryTarget())
+				{
+					ComposableMode->SetPrimaryTarget(Owner);
+				}
 			}
 		}
 	}
@@ -400,16 +402,16 @@ UNamiCameraModeBase *UNamiCameraComponent::FindOrAddCameraModeInstanceInPool(TSu
 		return nullptr;
 	}
 
-	// 首先，查找CameraModeInstancePool中是否已经存在
-	for (UNamiCameraModeBase *CameraMode : CameraModeInstancePool)
+	// O(1) 查找：使用 TMap 查找已存在的实例
+	if (TObjectPtr<UNamiCameraModeBase>* FoundMode = CameraModeInstancePool.Find(CameraModeClass))
 	{
-		if ((CameraMode != nullptr) && (CameraMode->GetClass() == CameraModeClass))
+		if (IsValid(*FoundMode))
 		{
-			return CameraMode;
+			return *FoundMode;
 		}
 	}
 
-	// 如果不存在，创建一个新的CameraMode实例
+	// 如果不存在，创建一个新的 CameraMode 实例
 	UNamiCameraModeBase *NewCameraMode = NewObject<UNamiCameraModeBase>(this, CameraModeClass, NAME_None, RF_NoFlags);
 	if (!IsValid(NewCameraMode))
 	{
@@ -417,7 +419,8 @@ UNamiCameraModeBase *UNamiCameraComponent::FindOrAddCameraModeInstanceInPool(TSu
 		return nullptr;
 	}
 
-	CameraModeInstancePool.Add(NewCameraMode);
+	// O(1) 添加：使用 TMap 存储
+	CameraModeInstancePool.Add(CameraModeClass, NewCameraMode);
 
 	return NewCameraMode;
 }
@@ -432,218 +435,6 @@ bool UNamiCameraComponent::PullCameraModeAtIndex(int32 Index)
 		return true;
 	}
 	return false;
-}
-
-void UNamiCameraComponent::AddGlobalFeature(UNamiCameraFeature* Feature)
-{
-	if (!IsValid(Feature))
-	{
-		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::AddGlobalFeature] Feature is null"));
-		return;
-	}
-
-	// 检查是否已存在
-	if (GlobalFeatures.Contains(Feature))
-	{
-		return;
-	}
-
-	GlobalFeatures.Add(Feature);
-	
-	// 初始化 Feature（需要设置一个临时的 Mode，或者修改 Feature 系统支持无 Mode）
-	// 这里我们让 Feature 可以没有 Mode（可选）
-	UNamiCameraModeBase* ActiveMode = GetActiveCameraMode();
-	if (ActiveMode)
-	{
-		Feature->Initialize(ActiveMode);
-	}
-
-}
-
-bool UNamiCameraComponent::RemoveGlobalFeature(UNamiCameraFeature* Feature)
-{
-	if (!IsValid(Feature))
-	{
-		return false;
-	}
-
-	int32 Index = GlobalFeatures.Find(Feature);
-	if (Index != INDEX_NONE)
-	{
-		GlobalFeatures.RemoveAt(Index);
-		return true;
-	}
-
-	return false;
-}
-
-UNamiCameraFeature* UNamiCameraComponent::FindGlobalFeatureByName(FName FeatureName) const
-{
-	for (UNamiCameraFeature* Feature : GlobalFeatures)
-	{
-		if (IsValid(Feature) && Feature->FeatureName == FeatureName)
-		{
-			return Feature;
-		}
-	}
-	return nullptr;
-}
-
-void UNamiCameraComponent::RemoveGlobalFeaturesByTag(const FGameplayTag& Tag, bool bDeactivateFirst)
-{
-	if (!Tag.IsValid())
-	{
-		return;
-	}
-
-	TArray<UNamiCameraFeature*> FeaturesToRemove;
-
-	for (UNamiCameraFeature* Feature : GlobalFeatures)
-	{
-		if (IsValid(Feature) && Feature->HasTag(Tag))
-		{
-			FeaturesToRemove.Add(Feature);
-		}
-	}
-
-	for (UNamiCameraFeature* Feature : FeaturesToRemove)
-	{
-		if (IsValid(Feature))
-		{
-			if (bDeactivateFirst)
-			{
-				Feature->Deactivate();
-			}
-			RemoveGlobalFeature(Feature);
-		}
-	}
-}
-
-void UNamiCameraComponent::RemoveGlobalFeaturesByTags(const FGameplayTagContainer& TagContainer, bool bDeactivateFirst)
-{
-	if (TagContainer.IsEmpty())
-	{
-		return;
-	}
-
-	TArray<UNamiCameraFeature*> FeaturesToRemove;
-
-	for (UNamiCameraFeature* Feature : GlobalFeatures)
-	{
-		if (IsValid(Feature) && Feature->HasAnyTag(TagContainer))
-		{
-			FeaturesToRemove.Add(Feature);
-		}
-	}
-
-	for (UNamiCameraFeature* Feature : FeaturesToRemove)
-	{
-		if (IsValid(Feature))
-		{
-			if (bDeactivateFirst)
-			{
-				Feature->Deactivate();
-			}
-			RemoveGlobalFeature(Feature);
-		}
-	}
-}
-
-void UNamiCameraComponent::RemoveStayGlobalFeatures()
-{
-	RemoveGlobalFeaturesByTag(Tag_Camera_Feature_ManualCleanup, true);
-}
-
-UNamiCameraFeature* UNamiCameraComponent::GetFeatureByName(FName FeatureName) const
-{
-	// 先查找全局Feature
-	if (UNamiCameraFeature* Feature = FindGlobalFeatureByName(FeatureName))
-	{
-		return Feature;
-	}
-	
-	// 再查找当前激活Mode的Feature
-	if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
-	{
-		const TArray<UNamiCameraFeature*>& ModeFeatures = ActiveMode->GetFeatures();
-		for (UNamiCameraFeature* Feature : ModeFeatures)
-		{
-			if (IsValid(Feature) && Feature->FeatureName == FeatureName)
-			{
-				return Feature;
-			}
-		}
-	}
-	
-	return nullptr;
-}
-
-TArray<UNamiCameraFeature*> UNamiCameraComponent::GetFeaturesByTag(const FGameplayTag& Tag) const
-{
-	TArray<UNamiCameraFeature*> Result;
-	
-	if (!Tag.IsValid())
-	{
-		return Result;
-	}
-	
-	// 查找全局Feature
-	for (UNamiCameraFeature* Feature : GlobalFeatures)
-	{
-		if (IsValid(Feature) && Feature->HasTag(Tag))
-		{
-			Result.Add(Feature);
-		}
-	}
-	
-	// 查找当前激活Mode的Feature
-	if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
-	{
-		const TArray<UNamiCameraFeature*>& ModeFeatures = ActiveMode->GetFeatures();
-		for (UNamiCameraFeature* Feature : ModeFeatures)
-		{
-			if (IsValid(Feature) && Feature->HasTag(Tag))
-			{
-				Result.Add(Feature);
-			}
-		}
-	}
-	
-	return Result;
-}
-
-TArray<UNamiCameraFeature*> UNamiCameraComponent::GetFeaturesByTags(const FGameplayTagContainer& TagContainer) const
-{
-	TArray<UNamiCameraFeature*> Result;
-	
-	if (TagContainer.IsEmpty())
-	{
-		return Result;
-	}
-	
-	// 查找全局Feature
-	for (UNamiCameraFeature* Feature : GlobalFeatures)
-	{
-		if (IsValid(Feature) && Feature->HasAnyTag(TagContainer))
-		{
-			Result.Add(Feature);
-		}
-	}
-	
-	// 查找当前激活Mode的Feature
-	if (UNamiCameraModeBase* ActiveMode = GetActiveCameraMode())
-	{
-		const TArray<UNamiCameraFeature*>& ModeFeatures = ActiveMode->GetFeatures();
-		for (UNamiCameraFeature* Feature : ModeFeatures)
-		{
-			if (IsValid(Feature) && Feature->HasAnyTag(TagContainer))
-			{
-				Result.Add(Feature);
-			}
-		}
-	}
-	
-	return Result;
 }
 
 #if WITH_EDITOR
@@ -762,40 +553,6 @@ bool UNamiCameraComponent::ProcessModeStack(float DeltaTime, const FNamiCameraPi
 	return BlendingStack.EvaluateStack(DeltaTime, OutBaseView);
 }
 
-void UNamiCameraComponent::ProcessGlobalFeatures(float DeltaTime, FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView)
-{
-	// 1. 收集基础状态（来自 Mode Stack）
-	FNamiCameraState BaseState;
-	BaseState.PivotLocation = InOutView.PivotLocation;
-	BaseState.PivotRotation = InOutView.ControlRotation;
-	BaseState.CameraLocation = InOutView.CameraLocation;
-	BaseState.CameraRotation = InOutView.CameraRotation;
-	BaseState.FieldOfView = InOutView.FOV;
-	// 其他参数使用默认值或从视图反推（简化实现）
-	BaseState.ComputeOutput();
-	Context.BaseState = BaseState;
-	Context.bHasBaseState = true;
-
-	// 2. 保存 EffectView（用于 Feature 访问）
-	Context.EffectView = InOutView;
-
-	// 3. 应用全局 Feature
-	for (UNamiCameraFeature* Feature : GlobalFeatures)
-	{
-		if (!Feature || !Feature->IsEnabled())
-		{
-			continue;
-		}
-
-		Feature->Update(DeltaTime);
-		
-		// 调用新接口（带 Context）
-		Feature->ApplyToViewWithContext(InOutView, DeltaTime, Context);
-	}
-
-	// 4. 更新 EffectView
-	Context.EffectView = InOutView;
-}
 
 void UNamiCameraComponent::ProcessControllerSync(float DeltaTime, const FNamiCameraPipelineContext& Context, const FNamiCameraView& InView)
 {
@@ -941,7 +698,9 @@ void UNamiCameraComponent::ProcessSmoothing(float DeltaTime, const FNamiCameraVi
 void UNamiCameraComponent::PostProcessPipeline(float DeltaTime, const FNamiCameraPipelineContext& Context, FMinimalViewInfo& InOutPOV)
 {
 	// 5.1 Debug 绘制（使用阶段2的 EffectView）
+#if WITH_EDITOR
 	DrawDebugCameraInfo(Context.EffectView);
+#endif
 
 	// 5.2 Debug 日志（如果启用）
 	if (UNamiCameraSettings::ShouldEnableStackDebugLog())
@@ -958,46 +717,46 @@ void UNamiCameraComponent::PostProcessPipeline(float DeltaTime, const FNamiCamer
 	FieldOfView = InOutPOV.FOV;
 }
 
-// ========== Camera Adjust 实现 ==========
+// ========== Adjust API 实现 ==========
 
-UNamiCameraAdjust* UNamiCameraComponent::PushCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass,
+UNamiCameraAdjust* UNamiCameraComponent::PushAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass,
 	ENamiCameraAdjustDuplicatePolicy DuplicatePolicy)
 {
 	if (!IsValid(AdjustClass))
 	{
-		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::PushCameraAdjust] AdjustClass is null"));
+		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::PushAdjust] AdjustClass is null"));
 		return nullptr;
 	}
 
 	// 检查同类 Adjust 是否已存在
-	UNamiCameraAdjust* ExistingAdjust = FindCameraAdjustByClass(AdjustClass);
+	UNamiCameraAdjust* ExistingAdjust = FindAdjustByClass(AdjustClass);
 	if (ExistingAdjust)
 	{
 		switch (DuplicatePolicy)
 		{
 		case ENamiCameraAdjustDuplicatePolicy::KeepExisting:
 			// 保持现有，返回已存在的实例
-			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, keeping existing (KeepExisting policy)"),
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjust] %s already exists, keeping existing (KeepExisting policy)"),
 				*AdjustClass->GetName());
 			return ExistingAdjust;
 
 		case ENamiCameraAdjustDuplicatePolicy::Replace:
 			// 平滑替换：混出现有的
-			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, replacing with blend out (Replace policy)"),
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjust] %s already exists, replacing with blend out (Replace policy)"),
 				*AdjustClass->GetName());
-			PopCameraAdjust(ExistingAdjust, false);
+			PopAdjust(ExistingAdjust, false);
 			break;
 
 		case ENamiCameraAdjustDuplicatePolicy::ForceReplace:
 			// 强制替换：立即移除现有的
-			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, force replacing (ForceReplace policy)"),
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjust] %s already exists, force replacing (ForceReplace policy)"),
 				*AdjustClass->GetName());
-			PopCameraAdjust(ExistingAdjust, true);
+			PopAdjust(ExistingAdjust, true);
 			break;
 
 		case ENamiCameraAdjustDuplicatePolicy::AllowDuplicate:
 			// 允许重复：继续创建新实例
-			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjust] %s already exists, allowing duplicate (AllowDuplicate policy)"),
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjust] %s already exists, allowing duplicate (AllowDuplicate policy)"),
 				*AdjustClass->GetName());
 			break;
 		}
@@ -1007,12 +766,12 @@ UNamiCameraAdjust* UNamiCameraComponent::PushCameraAdjust(TSubclassOf<UNamiCamer
 	UNamiCameraAdjust* AdjustInstance = NewObject<UNamiCameraAdjust>(this, AdjustClass);
 	if (!IsValid(AdjustInstance))
 	{
-		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::PushCameraAdjust] Failed to create Adjust instance"));
+		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::PushAdjust] Failed to create Adjust instance"));
 		return nullptr;
 	}
 
 	// 推送实例（使用 AllowDuplicate 策略，因为我们已经在上面处理了重复检查）
-	if (!PushCameraAdjustInstance(AdjustInstance, ENamiCameraAdjustDuplicatePolicy::AllowDuplicate))
+	if (!PushAdjustInstance(AdjustInstance, ENamiCameraAdjustDuplicatePolicy::AllowDuplicate))
 	{
 		return nullptr;
 	}
@@ -1020,47 +779,47 @@ UNamiCameraAdjust* UNamiCameraComponent::PushCameraAdjust(TSubclassOf<UNamiCamer
 	return AdjustInstance;
 }
 
-bool UNamiCameraComponent::PushCameraAdjustInstance(UNamiCameraAdjust* AdjustInstance,
+bool UNamiCameraComponent::PushAdjustInstance(UNamiCameraAdjust* AdjustInstance,
 	ENamiCameraAdjustDuplicatePolicy DuplicatePolicy)
 {
 	if (!IsValid(AdjustInstance))
 	{
-		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] AdjustInstance is null"));
+		NAMI_LOG_COMPONENT(Error, TEXT("[UNamiCameraComponent::PushAdjustInstance] AdjustInstance is null"));
 		return false;
 	}
 
 	// 检查同一实例是否已存在
 	if (CameraAdjustStack.Contains(AdjustInstance))
 	{
-		NAMI_LOG_COMPONENT(Warning, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] AdjustInstance already exists in stack"));
+		NAMI_LOG_COMPONENT(Warning, TEXT("[UNamiCameraComponent::PushAdjustInstance] AdjustInstance already exists in stack"));
 		return false;
 	}
 
 	// 检查同类 Adjust 是否已存在
 	UClass* AdjustClass = AdjustInstance->GetClass();
-	UNamiCameraAdjust* ExistingAdjust = FindCameraAdjustByClass(AdjustClass);
+	UNamiCameraAdjust* ExistingAdjust = FindAdjustByClass(AdjustClass);
 	if (ExistingAdjust)
 	{
 		switch (DuplicatePolicy)
 		{
 		case ENamiCameraAdjustDuplicatePolicy::KeepExisting:
 			// 保持现有，拒绝新实例
-			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] %s already exists, rejecting new instance (KeepExisting policy)"),
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjustInstance] %s already exists, rejecting new instance (KeepExisting policy)"),
 				*AdjustClass->GetName());
 			return false;
 
 		case ENamiCameraAdjustDuplicatePolicy::Replace:
 			// 平滑替换：混出现有的
-			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] %s already exists, replacing with blend out (Replace policy)"),
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjustInstance] %s already exists, replacing with blend out (Replace policy)"),
 				*AdjustClass->GetName());
-			PopCameraAdjust(ExistingAdjust, false);
+			PopAdjust(ExistingAdjust, false);
 			break;
 
 		case ENamiCameraAdjustDuplicatePolicy::ForceReplace:
 			// 强制替换：立即移除现有的
-			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] %s already exists, force replacing (ForceReplace policy)"),
+			NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjustInstance] %s already exists, force replacing (ForceReplace policy)"),
 				*AdjustClass->GetName());
-			PopCameraAdjust(ExistingAdjust, true);
+			PopAdjust(ExistingAdjust, true);
 			break;
 
 		case ENamiCameraAdjustDuplicatePolicy::AllowDuplicate:
@@ -1084,13 +843,13 @@ bool UNamiCameraComponent::PushCameraAdjustInstance(UNamiCameraAdjust* AdjustIns
 
 	CameraAdjustStack.Insert(AdjustInstance, InsertIndex);
 
-	NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushCameraAdjustInstance] Pushed %s (Priority: %d) at index %d"),
+	NAMI_LOG_COMPONENT(Log, TEXT("[UNamiCameraComponent::PushAdjustInstance] Pushed %s (Priority: %d) at index %d"),
 		*AdjustClass->GetName(), AdjustInstance->Priority, InsertIndex);
 
 	return true;
 }
 
-bool UNamiCameraComponent::PopCameraAdjust(UNamiCameraAdjust* AdjustInstance, bool bForceImmediate)
+bool UNamiCameraComponent::PopAdjust(UNamiCameraAdjust* AdjustInstance, bool bForceImmediate)
 {
 	if (!IsValid(AdjustInstance))
 	{
@@ -1111,12 +870,12 @@ bool UNamiCameraComponent::PopCameraAdjust(UNamiCameraAdjust* AdjustInstance, bo
 	{
 		CameraAdjustStack.RemoveAt(Index);
 	}
-	
+
 	// 否则会在 CleanupInactiveCameraAdjusts 中移除
 	return true;
 }
 
-bool UNamiCameraComponent::PopCameraAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass, bool bForceImmediate)
+bool UNamiCameraComponent::PopAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass, bool bForceImmediate)
 {
 	if (!IsValid(AdjustClass))
 	{
@@ -1136,13 +895,13 @@ bool UNamiCameraComponent::PopCameraAdjustByClass(TSubclassOf<UNamiCameraAdjust>
 	bool bResult = ToRemove.Num() > 0;
 	for (UNamiCameraAdjust* Adjust : ToRemove)
 	{
-		PopCameraAdjust(Adjust, bForceImmediate);
+		PopAdjust(Adjust, bForceImmediate);
 	}
 
 	return bResult;
 }
 
-UNamiCameraAdjust* UNamiCameraComponent::FindCameraAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass) const
+UNamiCameraAdjust* UNamiCameraComponent::FindAdjustByClass(TSubclassOf<UNamiCameraAdjust> AdjustClass) const
 {
 	if (!IsValid(AdjustClass))
 	{
@@ -1160,7 +919,7 @@ UNamiCameraAdjust* UNamiCameraComponent::FindCameraAdjustByClass(TSubclassOf<UNa
 	return nullptr;
 }
 
-const TArray<UNamiCameraAdjust*>& UNamiCameraComponent::GetCameraAdjusts() const
+const TArray<UNamiCameraAdjust*>& UNamiCameraComponent::GetAdjusts() const
 {
 	// 将 TObjectPtr 数组转换为原始指针数组
 	static TArray<UNamiCameraAdjust*> Result;
@@ -1175,9 +934,9 @@ const TArray<UNamiCameraAdjust*>& UNamiCameraComponent::GetCameraAdjusts() const
 	return Result;
 }
 
-bool UNamiCameraComponent::HasCameraAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass) const
+bool UNamiCameraComponent::HasAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass) const
 {
-	return FindCameraAdjustByClass(AdjustClass) != nullptr;
+	return FindAdjustByClass(AdjustClass) != nullptr;
 }
 
 void UNamiCameraComponent::ProcessCameraAdjusts(float DeltaTime, FNamiCameraPipelineContext& Context, FNamiCameraView& InOutView)
@@ -1194,12 +953,12 @@ void UNamiCameraComponent::ProcessCameraAdjusts(float DeltaTime, FNamiCameraPipe
 	// 调试：追踪打断后的帧（在开头记录 CameraAdjust 应用前的状态）
 	if (InputInterruptDebugFrameCounter > 0)
 	{
-		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] === 第 %d 帧 (CameraAdjust应用前) ==="), InputInterruptDebugFrameCounter);
-		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] === 第 %d 帧 (CameraAdjust应用前) ==="), InputInterruptDebugFrameCounter);
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
 			InOutView.CameraLocation.X, InOutView.CameraLocation.Y, InOutView.CameraLocation.Z);
-		UE_LOG(LogNamiCamera, Log, TEXT("  ArmRotation(Mode输出): P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  ArmRotation(Mode输出): P=%.2f Y=%.2f R=%.2f"),
 			CurrentArmRotation.Pitch, CurrentArmRotation.Yaw, CurrentArmRotation.Roll);
-		UE_LOG(LogNamiCamera, Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f R=%.2f"),
 			InOutView.ControlRotation.Pitch, InOutView.ControlRotation.Yaw, InOutView.ControlRotation.Roll);
 
 		InputInterruptDebugFrameCounter++;
@@ -1221,7 +980,7 @@ void UNamiCameraComponent::ProcessCameraAdjusts(float DeltaTime, FNamiCameraPipe
 	{
 		InOutView.ControlRotation = PendingControlRotation;
 		bPendingControlRotationSync = false;
-		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 应用待同步 ControlRotation 到 InOutView: P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 应用待同步 ControlRotation 到 InOutView: P=%.2f Y=%.2f R=%.2f"),
 			PendingControlRotation.Pitch, PendingControlRotation.Yaw, PendingControlRotation.Roll);
 	}
 
@@ -1230,40 +989,40 @@ void UNamiCameraComponent::ProcessCameraAdjusts(float DeltaTime, FNamiCameraPipe
 	{
 		// 打断帧：保存 CameraAdjust 应用后的实际相机位置
 		InputInterruptSavedView = InOutView;
-		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 打断帧 - CameraAdjust 应用后 View:"));
-		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 打断帧 - CameraAdjust 应用后 View:"));
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
 			InOutView.CameraLocation.X, InOutView.CameraLocation.Y, InOutView.CameraLocation.Z);
-		UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
 			InOutView.CameraRotation.Pitch, InOutView.CameraRotation.Yaw, InOutView.CameraRotation.Roll);
 
 		// 计算应用后的臂旋转
 		FVector FinalArmDir = InOutView.CameraLocation - InOutView.PivotLocation;
 		FRotator FinalArmRotation = FinalArmDir.Rotation();
-		UE_LOG(LogNamiCamera, Log, TEXT("  FinalArmRotation(计算): P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  FinalArmRotation(计算): P=%.2f Y=%.2f R=%.2f"),
 			FinalArmRotation.Pitch, FinalArmRotation.Yaw, FinalArmRotation.Roll);
 	}
 	else if (InputInterruptDebugFrameCounter > 1)
 	{
 		// 后续帧：记录 CameraAdjust 应用后的视图并对比
-		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 第 %d 帧 - CameraAdjust 应用后 View:"), InputInterruptDebugFrameCounter);
-		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 第 %d 帧 - CameraAdjust 应用后 View:"), InputInterruptDebugFrameCounter);
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
 			InOutView.CameraLocation.X, InOutView.CameraLocation.Y, InOutView.CameraLocation.Z);
-		UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
 			InOutView.CameraRotation.Pitch, InOutView.CameraRotation.Yaw, InOutView.CameraRotation.Roll);
 
 		// 计算应用后的臂旋转
 		FVector FinalArmDir = InOutView.CameraLocation - InOutView.PivotLocation;
 		FRotator FinalArmRotation = FinalArmDir.Rotation();
-		UE_LOG(LogNamiCamera, Log, TEXT("  FinalArmRotation(计算): P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  FinalArmRotation(计算): P=%.2f Y=%.2f R=%.2f"),
 			FinalArmRotation.Pitch, FinalArmRotation.Yaw, FinalArmRotation.Roll);
 
 		// 与打断帧对比
 		FVector LocDelta = InOutView.CameraLocation - InputInterruptSavedView.CameraLocation;
 		FRotator RotDelta = InOutView.CameraRotation - InputInterruptSavedView.CameraRotation;
-		UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 与打断帧对比:"));
-		UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation 差异: X=%.2f Y=%.2f Z=%.2f (距离=%.2f)"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 与打断帧对比:"));
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraLocation 差异: X=%.2f Y=%.2f Z=%.2f (距离=%.2f)"),
 			LocDelta.X, LocDelta.Y, LocDelta.Z, LocDelta.Size());
-		UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation 差异: P=%.2f Y=%.2f R=%.2f"),
+		NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraRotation 差异: P=%.2f Y=%.2f R=%.2f"),
 			RotDelta.Pitch, RotDelta.Yaw, RotDelta.Roll);
 	}
 
@@ -1363,29 +1122,29 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 					APlayerController* PC = GetOwnerPlayerController();
 					FRotator OldControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
 
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] ========== 混出同步 =========="));
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] 混出前 View:"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[BlendOut] ========== 混出同步 =========="));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[BlendOut] 混出前 View:"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
 						CurrentView.CameraLocation.X, CurrentView.CameraLocation.Y, CurrentView.CameraLocation.Z);
-					UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
 						CurrentView.CameraRotation.Pitch, CurrentView.CameraRotation.Yaw, CurrentView.CameraRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  PivotLocation: X=%.2f Y=%.2f Z=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  PivotLocation: X=%.2f Y=%.2f Z=%.2f"),
 						CurrentView.PivotLocation.X, CurrentView.PivotLocation.Y, CurrentView.PivotLocation.Z);
-					UE_LOG(LogNamiCamera, Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f"),
 						CurrentView.ControlRotation.Pitch, CurrentView.ControlRotation.Yaw);
-					UE_LOG(LogNamiCamera, Log, TEXT("  FOV: %.2f"), CurrentView.FOV);
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] 相机臂信息:"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentArmRotation(Mode输出): P=%.2f Y=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  FOV: %.2f"), CurrentView.FOV);
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[BlendOut] 相机臂信息:"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CurrentArmRotation(Mode输出): P=%.2f Y=%.2f"),
 						CurrentArmRotation.Pitch, CurrentArmRotation.Yaw);
-					UE_LOG(LogNamiCamera, Log, TEXT("  TargetArmRotation(缓存目标): P=%.2f Y=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  TargetArmRotation(缓存目标): P=%.2f Y=%.2f"),
 						Adjust->GetCachedWorldArmRotationTarget().Pitch, Adjust->GetCachedWorldArmRotationTarget().Yaw);
-					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedArmRotation(同步值): P=%.2f Y=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  AdjustedArmRotation(同步值): P=%.2f Y=%.2f"),
 						AdjustedArmRotation.Pitch, AdjustedArmRotation.Yaw);
-					UE_LOG(LogNamiCamera, Log, TEXT("  BlendWeight: %.3f"), Weight);
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] ControlRotation:"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(同步前): P=%.2f Y=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  BlendWeight: %.3f"), Weight);
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[BlendOut] ControlRotation:"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  PC->ControlRotation(同步前): P=%.2f Y=%.2f"),
 						OldControlRotation.Pitch, OldControlRotation.Yaw);
-					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedControlRotation(同步值): P=%.2f Y=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  AdjustedControlRotation(同步值): P=%.2f Y=%.2f"),
 						AdjustedControlRotation.Pitch, AdjustedControlRotation.Yaw);
 
 					// 同步 ControlRotation
@@ -1395,8 +1154,8 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 
 					// 记录同步后的状态
 					FRotator NewControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
-					UE_LOG(LogNamiCamera, Log, TEXT("[BlendOut] 同步后:"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(同步后): P=%.2f Y=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[BlendOut] 同步后:"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  PC->ControlRotation(同步后): P=%.2f Y=%.2f"),
 						NewControlRotation.Pitch, NewControlRotation.Yaw);
 
 					// 标记已同步
@@ -1421,7 +1180,7 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 				float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
 				if (CurrentTime - LastLogTime > 1.0f)
 				{
-					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 输入检测: bHasInput=%s, Threshold=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 输入检测: bHasInput=%s, Threshold=%.2f"),
 						bHasInput ? TEXT("true") : TEXT("false"), Adjust->InputInterruptThreshold);
 					LastLogTime = CurrentTime;
 				}
@@ -1456,33 +1215,33 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 					APlayerController* PC = GetOwnerPlayerController();
 					FRotator OldControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
 
-					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] ========== 输入打断触发 =========="));
-					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 打断前 View (CameraAdjust应用前):"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] ========== 输入打断触发 =========="));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 打断前 View (CameraAdjust应用前):"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraLocation: X=%.2f Y=%.2f Z=%.2f"),
 						CurrentView.CameraLocation.X, CurrentView.CameraLocation.Y, CurrentView.CameraLocation.Z);
-					UE_LOG(LogNamiCamera, Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CameraRotation: P=%.2f Y=%.2f R=%.2f"),
 						CurrentView.CameraRotation.Pitch, CurrentView.CameraRotation.Yaw, CurrentView.CameraRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  PivotLocation: X=%.2f Y=%.2f Z=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  PivotLocation: X=%.2f Y=%.2f Z=%.2f"),
 						CurrentView.PivotLocation.X, CurrentView.PivotLocation.Y, CurrentView.PivotLocation.Z);
-					UE_LOG(LogNamiCamera, Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  ControlRotation(View): P=%.2f Y=%.2f R=%.2f"),
 						CurrentView.ControlRotation.Pitch, CurrentView.ControlRotation.Yaw, CurrentView.ControlRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  FOV: %.2f"), CurrentView.FOV);
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  FOV: %.2f"), CurrentView.FOV);
 
-					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 相机臂信息:"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentArmRotation(Mode输出): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 相机臂信息:"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CurrentArmRotation(Mode输出): P=%.2f Y=%.2f R=%.2f"),
 						CurrentArmRotation.Pitch, CurrentArmRotation.Yaw, CurrentArmRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedArmRotation(Slerp后): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  AdjustedArmRotation(Slerp后): P=%.2f Y=%.2f R=%.2f"),
 						AdjustedArmRotation.Pitch, AdjustedArmRotation.Yaw, AdjustedArmRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  AdjustedControlRotation(Arm+180): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  AdjustedControlRotation(Arm+180): P=%.2f Y=%.2f R=%.2f"),
 						AdjustedControlRotation.Pitch, AdjustedControlRotation.Yaw, AdjustedControlRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  TargetArmRotation: P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  TargetArmRotation: P=%.2f Y=%.2f R=%.2f"),
 						Adjust->GetCachedWorldArmRotationTarget().Pitch, Adjust->GetCachedWorldArmRotationTarget().Yaw, Adjust->GetCachedWorldArmRotationTarget().Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  BlendWeight: %.3f"), Weight);
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  BlendWeight: %.3f"), Weight);
 
-					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] ControlRotation:"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(打断前): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] ControlRotation:"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  PC->ControlRotation(打断前): P=%.2f Y=%.2f R=%.2f"),
 						OldControlRotation.Pitch, OldControlRotation.Yaw, OldControlRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentControlRotation(缓存): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CurrentControlRotation(缓存): P=%.2f Y=%.2f R=%.2f"),
 						CurrentControlRotation.Pitch, CurrentControlRotation.Yaw, CurrentControlRotation.Roll);
 
 					// 保存打断前的视图（用于后续帧对比）
@@ -1503,10 +1262,10 @@ FNamiCameraAdjustParams UNamiCameraComponent::CalculateCombinedAdjustParams(floa
 
 					// 记录打断后的状态
 					FRotator NewControlRotation = PC ? PC->GetControlRotation() : FRotator::ZeroRotator;
-					UE_LOG(LogNamiCamera, Log, TEXT("[InputInterrupt] 同步后:"));
-					UE_LOG(LogNamiCamera, Log, TEXT("  PC->ControlRotation(打断后): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("[InputInterrupt] 同步后:"));
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  PC->ControlRotation(打断后): P=%.2f Y=%.2f R=%.2f"),
 						NewControlRotation.Pitch, NewControlRotation.Yaw, NewControlRotation.Roll);
-					UE_LOG(LogNamiCamera, Log, TEXT("  CurrentControlRotation(缓存): P=%.2f Y=%.2f R=%.2f"),
+					NAMI_LOG_INPUT_INTERRUPT(Log, TEXT("  CurrentControlRotation(缓存): P=%.2f Y=%.2f R=%.2f"),
 						CurrentControlRotation.Pitch, CurrentControlRotation.Yaw, CurrentControlRotation.Roll);
 
 					// 触发输入打断
@@ -1701,3 +1460,4 @@ void UNamiCameraComponent::SyncArmRotationToControlRotation(const FRotator& ArmR
 		PC->SetControlRotation(ArmRotation);
 	}
 }
+

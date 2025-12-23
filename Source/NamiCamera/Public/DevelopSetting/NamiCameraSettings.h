@@ -109,6 +109,18 @@ public:
 			ToolTip = "将模式混合日志输出到屏幕\n• 包括 PushCameraMode、SetBlendWeight、UpdateBlending 等\n• 用于调试相机模式切换和混合过程\n• 建议在调试模式切换问题时开启"))
 	bool bEnableModeBlendLogOnScreen{false};
 
+	/** 是否启用输入打断日志输出到Log（CameraAdjust 输入打断和混出同步） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|Logs",
+		meta = (
+			ToolTip = "将输入打断相关日志输出到Log窗口\n• 包括玩家输入检测、ControlRotation 同步、混出过程等\n• 用于调试 CameraAdjust 的输入打断行为\n• 日志量较大，建议仅在调试时开启"))
+	bool bEnableInputInterruptLog{false};
+
+	/** 是否启用输入打断日志输出到屏幕 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|LogScreen",
+		meta = (
+			ToolTip = "将输入打断相关日志输出到屏幕\n• 包括玩家输入检测、ControlRotation 同步、混出过程等\n• 日志量较大，建议仅在调试时开启"))
+	bool bEnableInputInterruptLogOnScreen{false};
+
 	// ========== DrawDebug 可视化 ==========
 
 	/** 是否启用 DrawDebug 绘制（全局开关） */
@@ -160,6 +172,14 @@ public:
 			ToolTip = "DrawDebug 绘制的线宽"))
 	float DrawDebugThickness{2.0f};
 
+	// ========== 双焦点相机调试 ==========
+
+	/** 是否启用双焦点相机调试（通过 GameplayDebugger 激活） */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Debug|DualFocus",
+		meta = (
+			ToolTip = "全局开关，启用后可通过 GameplayDebugger 查看双焦点相机的调试可视化\n• 包括椭圆轨道、焦点位置、权重连线、相机臂等\n• 使用 ` 键打开 GameplayDebugger，选择 DualFocusCamera 类别"))
+	bool bEnableDualFocusDebug{false};
+
 	// ========== 屏幕日志配置 ==========
 
 	/** 屏幕日志显示时长（秒，0表示持续显示） */
@@ -200,6 +220,9 @@ public:
 	/** 检查是否应该打印模式混合日志 */
 	static bool ShouldLogModeBlend();
 
+	/** 检查是否应该打印输入打断日志 */
+	static bool ShouldLogInputInterrupt();
+
 	// ========== 屏幕日志检查方法 ==========
 
 	/** 检查是否应该将效果日志输出到屏幕 */
@@ -220,6 +243,9 @@ public:
 	/** 检查是否应该将模式混合日志输出到屏幕 */
 	static bool ShouldLogModeBlendOnScreen();
 
+	/** 检查是否应该将输入打断日志输出到屏幕 */
+	static bool ShouldLogInputInterruptOnScreen();
+
 	// ========== DrawDebug 检查方法 ==========
 
 	/** 检查是否应该启用 DrawDebug 绘制 */
@@ -237,6 +263,8 @@ public:
 	/** 检查是否应该绘制吊臂信息 */
 	static bool ShouldDrawArmInfo();
 
+	/** 检查是否应该启用双焦点相机调试 */
+	static bool ShouldEnableDualFocusDebug();
 
 	/** 获取 DrawDebug 绘制持续时间 */
 	static float GetDrawDebugDuration();

@@ -16,5 +16,5 @@
 DEFINE_STAT(STAT_NamiCamera_GetCameraView);
 DEFINE_STAT(STAT_NamiCamera_ModeStack);
 DEFINE_STAT(STAT_NamiCamera_CameraAdjust);
-DEFINE_STAT(STAT_NamiCamera_GlobalFeatures);
+DEFINE_STAT(STAT_NamiCamera_ModeComponents);
 DEFINE_STAT(STAT_NamiCamera_Smoothing);

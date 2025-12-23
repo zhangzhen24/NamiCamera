@@ -3,13 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/Object.h"
-#include "Data/NamiCameraView.h"
 #include "Data/NamiBlendConfig.h"
+#include "Data/NamiCameraView.h"
+#include "UObject/Object.h"
 #include "NamiCameraModeBase.generated.h"
 
 class UNamiCameraComponent;
-class UNamiCameraFeature;
+class UNamiCameraModeComponent;
 
 // FAlphaBlend 前向声明
 struct FAlphaBlend;
@@ -39,20 +39,20 @@ struct NAMICAMERA_API FNamiCameraModeSettings
 	float ViewPitchMax = 89.0f;
 };
 
-	/**
-	 * 相机模式基类
-	 * 
-	 * 这是所有相机模式的根基类，提供：
-	 * - 生命周期管理
-	 * - Feature容器和管理
-	 * - 视图计算的基础框架
-	 * 
-	 * 设计原则：
-	 * - 模式通过组合Feature来扩展功能
-	 * - 模式专注于"计算视图"，Feature负责"修改视图"
-	 * - 子类应该尽量重用Feature而非直接继承复杂逻辑
-	 */
-	UCLASS(Abstract, Blueprintable, BlueprintType)
+/**
+ * 相机模式基类
+ *
+ * 这是所有相机模式的根基类，提供：
+ * - 生命周期管理
+ * - ModeComponent 容器和管理
+ * - 视图计算的基础框架
+ *
+ * 设计原则：
+ * - 模式通过组合 ModeComponent 来扩展功能
+ * - 模式专注于"计算视图"，ModeComponent 负责"修改视图"
+ * - 子类应该尽量重用 ModeComponent 而非直接继承复杂逻辑
+ */
+UCLASS(Abstract, Blueprintable, BlueprintType)
 class NAMICAMERA_API UNamiCameraModeBase : public UObject
 {
 	GENERATED_BODY()
@@ -111,59 +111,59 @@ public:
 	UFUNCTION(BlueprintNativeEvent, Category = "Camera Mode|Pivot Location")
 	FVector CalculatePivotLocation(float DeltaTime);
 
-	// ========== Feature 管理 ==========
+	// ========== ModeComponent 管理 ==========
 
 	/**
-	 * 添加一个Feature到模式
-	 * @param Feature 要添加的Feature实例
+	 * 添加一个组件到模式
+	 * @param Component 要添加的组件实例
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Camera Mode|Features")
-	void AddFeature(UNamiCameraFeature* Feature);
+	UFUNCTION(BlueprintCallable, Category = "Camera Mode|Components")
+	void AddComponent(UNamiCameraModeComponent* Component);
 
 	/**
-	 * 从模式中移除一个Feature
-	 * @param Feature 要移除的Feature实例
+	 * 从模式中移除一个组件
+	 * @param Component 要移除的组件实例
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Camera Mode|Features")
-	void RemoveFeature(UNamiCameraFeature* Feature);
+	UFUNCTION(BlueprintCallable, Category = "Camera Mode|Components")
+	void RemoveComponent(UNamiCameraModeComponent* Component);
 
 	/**
-	 * 获取所有Feature
+	 * 获取所有组件
 	 */
-	UFUNCTION(BlueprintPure, Category = "Camera Mode|Features")
-	const TArray<UNamiCameraFeature*>& GetFeatures() const { return Features; }
+	UFUNCTION(BlueprintPure, Category = "Camera Mode|Components")
+	const TArray<UNamiCameraModeComponent*>& GetComponents() const { return ModeComponents; }
 
 	/**
-	 * 通过类型获取Feature
+	 * 通过类型获取组件
 	 */
 	template<typename T>
-	T* GetFeature() const
+	T* GetComponent() const
 	{
-		for (UNamiCameraFeature* Feature : Features)
+		for (UNamiCameraModeComponent* Component : ModeComponents)
 		{
-			if (T* TypedFeature = Cast<T>(Feature))
+			if (T* TypedComponent = Cast<T>(Component))
 			{
-				return TypedFeature;
+				return TypedComponent;
 			}
 		}
 		return nullptr;
 	}
 
 	/**
-	 * 通过名称获取Feature
+	 * 通过名称获取组件
 	 */
-	UFUNCTION(BlueprintPure, Category = "Camera Mode|Features")
-	UNamiCameraFeature* GetFeatureByName(FName FeatureName) const;
+	UFUNCTION(BlueprintPure, Category = "Camera Mode|Components")
+	UNamiCameraModeComponent* GetComponentByName(FName ComponentName) const;
 
 	/**
-	 * 创建并添加Feature
+	 * 创建并添加组件
 	 */
 	template<typename T>
-	T* CreateAndAddFeature()
+	T* CreateAndAddComponent()
 	{
-		T* NewFeature = NewObject<T>(this);
-		AddFeature(NewFeature);
-		return NewFeature;
+		T* NewComponent = NewObject<T>(this);
+		AddComponent(NewComponent);
+		return NewComponent;
 	}
 
 	// ========== 辅助函数 ==========
@@ -176,7 +176,7 @@ public:
 	FORCEINLINE UNamiCameraComponent* GetCameraComponent() const { return CameraComponent.Get(); }
 
 	/** 设置相机组件 */
-	FORCEINLINE void SetCameraComponent(UNamiCameraComponent* NewCameraComponent);
+	void SetCameraComponent(UNamiCameraComponent* NewCameraComponent);
 
 	/** 是否激活 */
 	UFUNCTION(BlueprintPure, Category = "Camera Mode")
@@ -192,6 +192,14 @@ public:
 
 	/** 获取视图（供 Stack 使用，与 EnhancedCameraSystem 保持一致） */
 	const FNamiCameraView& GetView() const { return CurrentView; }
+
+	/** 获取上一次计算的相机位置 */
+	UFUNCTION(BlueprintPure, Category = "Camera Mode")
+	FVector GetLastCameraLocation() const { return CurrentView.CameraLocation; }
+
+	/** 获取拥有者 Actor（通过相机组件获取 Pawn） */
+	UFUNCTION(BlueprintPure, Category = "Camera Mode")
+	AActor* GetOwnerActor() const;
 
 	/** 获取混合权重 */
 	UFUNCTION(BlueprintPure, Category = "Camera Mode")
@@ -234,18 +242,18 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Camera Mode", meta = (AllowPrivateAccess = "true"))
 	TWeakObjectPtr<UNamiCameraComponent> CameraComponent;
 
-	/** Feature列表 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Camera Mode|Features")
-	TArray<TObjectPtr<UNamiCameraFeature>> Features;
+	/** 组件列表 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Instanced, Category = "Camera Mode|Components")
+	TArray<TObjectPtr<UNamiCameraModeComponent>> ModeComponents;
 
-	/** Feature 查找 Map（优化查找性能，按 FeatureName 索引） */
-	mutable TMap<FName, UNamiCameraFeature*> FeatureMap;
+	/** 组件查找 Map（优化查找性能，按 ComponentName 索引） */
+	mutable TMap<FName, UNamiCameraModeComponent*> ComponentMap;
 
-	/** 是否需要重新构建 FeatureMap */
-	mutable bool bFeatureMapDirty = true;
+	/** 是否需要重新构建 ComponentMap */
+	mutable bool bComponentMapDirty = true;
 
-	/** 重建 FeatureMap（延迟构建，只在需要时重建） */
-	void RebuildFeatureMap() const;
+	/** 重建 ComponentMap（延迟构建，只在需要时重建） */
+	void RebuildComponentMap() const;
 
 	/** 当前视图 */
 	FNamiCameraView CurrentView;
@@ -270,19 +278,19 @@ protected:
 	void UpdateBlending(float DeltaTime);
 
 	/**
-	 * 应用所有Feature到视图
+	 * 应用所有组件到视图
 	 */
-	void ApplyFeaturesToView(FNamiCameraView& InOutView, float DeltaTime);
+	void ApplyComponentsToView(FNamiCameraView& InOutView, float DeltaTime);
 
 	/**
-	 * 更新所有Feature
+	 * 更新所有组件
 	 */
-	void UpdateFeatures(float DeltaTime);
+	void UpdateComponents(float DeltaTime);
 
 	/**
-	 * 对Feature按优先级排序
+	 * 对组件按优先级排序
 	 */
-	void SortFeatures();
+	void SortComponents();
 
 };
 

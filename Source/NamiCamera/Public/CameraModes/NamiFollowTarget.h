@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Data/NamiCameraEnums.h"
 #include "NamiFollowTarget.generated.h"
 
 /**

@@ -4,8 +4,9 @@
 #include "Animation/BlendSpace.h"
 #include "Components/NamiCameraComponent.h"
 #include "Data/NamiCameraEnums.h"
-#include "CameraFeatures/NamiCameraFeature.h"
+#include "ModeComponents/NamiCameraModeComponent.h"
 #include "GameFramework/Pawn.h"
+#include "Logging/LogNamiCameraMacros.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraModeBase)
 
@@ -67,16 +68,16 @@ void UNamiCameraModeBase::Initialize_Implementation(UNamiCameraComponent* InCame
 	// 设置混合范围：从 0.0 到 1.0（默认淡入）
 	CameraBlendAlpha.SetValueRange(0.0f, 1.0f);
 
-	// 初始化所有Feature
-	for (UNamiCameraFeature* Feature : Features)
+	// 初始化所有组件
+	for (UNamiCameraModeComponent* Component : ModeComponents)
 	{
-		if (IsValid(Feature))
+		if (IsValid(Component))
 		{
-			Feature->Initialize(this);
+			Component->Initialize(this);
 		}
 	}
 
-	SortFeatures();
+	SortComponents();
 }
 
 void UNamiCameraModeBase::Activate_Implementation()
@@ -84,12 +85,12 @@ void UNamiCameraModeBase::Activate_Implementation()
 	State = ENamiCameraModeState::Active;
 	bIsActivated = true;
 
-	// 激活所有Feature
-	for (UNamiCameraFeature* Feature : Features)
+	// 激活所有组件
+	for (UNamiCameraModeComponent* Component : ModeComponents)
 	{
-		if (IsValid(Feature) && Feature->IsEnabled())
+		if (IsValid(Component) && Component->IsEnabled())
 		{
-			Feature->Activate();
+			Component->Activate();
 		}
 	}
 }
@@ -99,12 +100,12 @@ void UNamiCameraModeBase::Deactivate_Implementation()
 	State = ENamiCameraModeState::Inactive;
 	bIsActivated = false;
 
-	// 停用所有Feature
-	for (UNamiCameraFeature* Feature : Features)
+	// 停用所有组件
+	for (UNamiCameraModeComponent* Component : ModeComponents)
 	{
-		if (IsValid(Feature))
+		if (IsValid(Component))
 		{
-			Feature->Deactivate();
+			Component->Deactivate();
 		}
 	}
 }
@@ -114,14 +115,14 @@ void UNamiCameraModeBase::Tick_Implementation(float DeltaTime)
 	// 更新混合权重（使用 FAlphaBlend）
 	UpdateBlending(DeltaTime);
 
-	// 更新所有Feature
-	UpdateFeatures(DeltaTime);
+	// 更新所有组件
+	UpdateComponents(DeltaTime);
 
 	// 计算视图
 	CurrentView = CalculateView(DeltaTime);
 
-	// 应用Feature到视图
-	ApplyFeaturesToView(CurrentView, DeltaTime);
+	// 应用组件到视图
+	ApplyComponentsToView(CurrentView, DeltaTime);
 }
 
 FNamiCameraView UNamiCameraModeBase::CalculateView_Implementation(float DeltaTime)
@@ -148,87 +149,87 @@ FVector UNamiCameraModeBase::CalculatePivotLocation_Implementation(float DeltaTi
 	return FVector::ZeroVector;
 }
 
-void UNamiCameraModeBase::AddFeature(UNamiCameraFeature* Feature)
+void UNamiCameraModeBase::AddComponent(UNamiCameraModeComponent* Component)
 {
-	if (!IsValid(Feature))
+	if (!IsValid(Component))
 	{
 		return;
 	}
 
 	// 检查是否已存在
-	if (Features.Contains(Feature))
+	if (ModeComponents.Contains(Component))
 	{
 		return;
 	}
 
-	Features.Add(Feature);
-	Feature->Initialize(this);
+	ModeComponents.Add(Component);
+	Component->Initialize(this);
 
-	// 如果模式已激活，同时激活Feature
-	if (State == ENamiCameraModeState::Active && Feature->IsEnabled())
+	// 如果模式已激活，同时激活组件
+	if (State == ENamiCameraModeState::Active && Component->IsEnabled())
 	{
-		Feature->Activate();
+		Component->Activate();
 	}
 
-	SortFeatures();
-	
-	// 标记 FeatureMap 需要重建
-	bFeatureMapDirty = true;
+	SortComponents();
+
+	// 标记 ComponentMap 需要重建
+	bComponentMapDirty = true;
 }
 
-void UNamiCameraModeBase::RemoveFeature(UNamiCameraFeature* Feature)
+void UNamiCameraModeBase::RemoveComponent(UNamiCameraModeComponent* Component)
 {
-	if (!IsValid(Feature))
+	if (!IsValid(Component))
 	{
 		return;
 	}
 
-	int32 Index = Features.Find(Feature);
+	int32 Index = ModeComponents.Find(Component);
 	if (Index != INDEX_NONE)
 	{
-		// 如果模式已激活，先停用Feature
+		// 如果模式已激活，先停用组件
 		if (State == ENamiCameraModeState::Active)
 		{
-			Feature->Deactivate();
+			Component->Deactivate();
 		}
 
-		Features.RemoveAt(Index);
-		
-		// 标记 FeatureMap 需要重建
-		bFeatureMapDirty = true;
+		ModeComponents.RemoveAt(Index);
+
+		// 标记 ComponentMap 需要重建
+		bComponentMapDirty = true;
 	}
 }
 
-UNamiCameraFeature* UNamiCameraModeBase::GetFeatureByName(FName FeatureName) const
+UNamiCameraModeComponent* UNamiCameraModeBase::GetComponentByName(FName ComponentName) const
 {
-	// 如果 FeatureMap 需要重建，先重建
-	if (bFeatureMapDirty)
+	// 如果 ComponentMap 需要重建，先重建
+	if (bComponentMapDirty)
 	{
-		RebuildFeatureMap();
+		RebuildComponentMap();
 	}
 
 	// 从 Map 中查找（O(1) 时间复杂度）
-	if (UNamiCameraFeature** FoundFeature = FeatureMap.Find(FeatureName))
+	if (UNamiCameraModeComponent** FoundComponent = ComponentMap.Find(ComponentName))
 	{
-		return *FoundFeature;
+		return *FoundComponent;
 	}
 
 	return nullptr;
 }
 
-void UNamiCameraModeBase::RebuildFeatureMap() const
+void UNamiCameraModeBase::RebuildComponentMap() const
 {
-	FeatureMap.Empty();
-	
-	for (UNamiCameraFeature* Feature : Features)
+	ComponentMap.Empty();
+
+	for (UNamiCameraModeComponent* Component : ModeComponents)
 	{
-		if (IsValid(Feature) && Feature->FeatureName != NAME_None)
+		if (IsValid(Component) && Component->ComponentName != NAME_None)
 		{
-			FeatureMap.Add(Feature->FeatureName, Feature);
+			ComponentMap.Add(Component->ComponentName, Component);
 		}
 	}
-	
-	bFeatureMapDirty = false;
+
+	bComponentMapDirty = false;
 }
 
 UWorld* UNamiCameraModeBase::GetWorld() const
@@ -276,55 +277,55 @@ void UNamiCameraModeBase::SetBlendWeight(float InWeight)
 		CameraBlendAlpha.GetDesiredValue());
 }
 
-void UNamiCameraModeBase::ApplyFeaturesToView(FNamiCameraView& InOutView, float DeltaTime)
+void UNamiCameraModeBase::ApplyComponentsToView(FNamiCameraView& InOutView, float DeltaTime)
 {
-	// 优化：只遍历有效的 Feature，减少无效检查
-	for (UNamiCameraFeature* Feature : Features)
+	// 优化：只遍历有效的组件，减少无效检查
+	for (UNamiCameraModeComponent* Component : ModeComponents)
 	{
-		if (!Feature)
+		if (!Component)
 		{
 			continue;
 		}
 
-		// 快速路径：如果 Feature 未启用，跳过 ApplyToView
-		if (!Feature->IsEnabled())
+		// 快速路径：如果组件未启用，跳过 ApplyToView
+		if (!Component->IsEnabled())
 		{
 			continue;
 		}
 
-		Feature->ApplyToView(InOutView, DeltaTime);
+		Component->ApplyToView(InOutView, DeltaTime);
 	}
 }
 
-void UNamiCameraModeBase::UpdateFeatures(float DeltaTime)
+void UNamiCameraModeBase::UpdateComponents(float DeltaTime)
 {
-	// 优化：只遍历有效的 Feature，减少无效检查
-	for (UNamiCameraFeature* Feature : Features)
+	// 优化：只遍历有效的组件，减少无效检查
+	for (UNamiCameraModeComponent* Component : ModeComponents)
 	{
-		if (!Feature)
+		if (!Component)
 		{
 			continue;
 		}
 
-		// 快速路径：如果 Feature 未启用，跳过 Update
-		if (!Feature->IsEnabled())
+		// 快速路径：如果组件未启用，跳过 Update
+		if (!Component->IsEnabled())
 		{
 			continue;
 		}
 
-		Feature->Update(DeltaTime);
+		Component->Update(DeltaTime);
 	}
 }
 
-void UNamiCameraModeBase::SortFeatures()
+void UNamiCameraModeBase::SortComponents()
 {
-	Features.Sort([](const UNamiCameraFeature& A, const UNamiCameraFeature& B)
+	ModeComponents.Sort([](const UNamiCameraModeComponent& A, const UNamiCameraModeComponent& B)
 	{
 		return A.Priority > B.Priority;
 	});
-	
-	// 排序后需要重建 FeatureMap
-	bFeatureMapDirty = true;
+
+	// 排序后需要重建 ComponentMap
+	bComponentMapDirty = true;
 }
 
 void UNamiCameraModeBase::UpdateBlending(float DeltaTime)
@@ -364,4 +365,13 @@ void UNamiCameraModeBase::UpdateBlending(float DeltaTime)
 			BlendTimeRemaining,
 			BlendWeight);
 	}
+}
+
+AActor* UNamiCameraModeBase::GetOwnerActor() const
+{
+	if (CameraComponent.IsValid())
+	{
+		return CameraComponent->GetOwnerPawn();
+	}
+	return nullptr;
 }
