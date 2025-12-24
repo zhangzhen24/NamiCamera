@@ -3,8 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Data/NamiBlendConfig.h"
-#include "Data/NamiCameraView.h"
+#include "Core/NamiBlendConfig.h"
+#include "Core/NamiCameraView.h"
 #include "UObject/Object.h"
 #include "NamiCameraModeBase.generated.h"
 

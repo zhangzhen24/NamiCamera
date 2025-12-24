@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Calculators/Target/NamiCameraTargetCalculator.h"
+#include "Calculators/NamiCameraTargetCalculator.h"
 #include "NamiSingleTargetCalculator.generated.h"
 
 /**

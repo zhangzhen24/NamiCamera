@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "ModeComponents/NamiCameraModeComponent.h"
-#include "Data/NamiCameraEnums.h"
+#include "Core/NamiCameraEnums.h"
 #include "NamiCameraEffectComponent.generated.h"
 
 /**

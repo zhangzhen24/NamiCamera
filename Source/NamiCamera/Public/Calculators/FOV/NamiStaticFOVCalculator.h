@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Calculators/FOV/NamiCameraFOVCalculator.h"
+#include "Calculators/NamiCameraFOVCalculator.h"
 #include "NamiStaticFOVCalculator.generated.h"
 
 /**

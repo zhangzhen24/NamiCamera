@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Calculators/Position/NamiCameraPositionCalculator.h"
+#include "Calculators/NamiCameraPositionCalculator.h"
 #include "NamiOffsetPositionCalculator.generated.h"
 
 /**

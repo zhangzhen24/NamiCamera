@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Calculators/Rotation/NamiCameraRotationCalculator.h"
+#include "Calculators/NamiCameraRotationCalculator.h"
 #include "NamiControlRotationCalculator.generated.h"
 
 /**

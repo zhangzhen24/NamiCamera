@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "GameplayTagContainer.h"
-#include "Data/NamiCameraView.h"
+#include "Core/NamiCameraView.h"
 #include "NamiCameraModeComponent.generated.h"
 
 class UNamiCameraModeBase;

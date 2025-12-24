@@ -2,10 +2,10 @@
 
 #include "CameraModes/NamiComposableCameraMode.h"
 
-#include "Calculators/Target/NamiCameraTargetCalculator.h"
-#include "Calculators/Position/NamiCameraPositionCalculator.h"
-#include "Calculators/Rotation/NamiCameraRotationCalculator.h"
-#include "Calculators/FOV/NamiCameraFOVCalculator.h"
+#include "Calculators/NamiCameraTargetCalculator.h"
+#include "Calculators/NamiCameraPositionCalculator.h"
+#include "Calculators/NamiCameraRotationCalculator.h"
+#include "Calculators/NamiCameraFOVCalculator.h"
 #include "Components/NamiCameraComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"

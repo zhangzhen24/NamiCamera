@@ -4,10 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "NamiCameraModeBase.h"
-#include "Calculators/FOV/NamiCameraFOVCalculator.h"
-#include "Calculators/Position/NamiCameraPositionCalculator.h"
-#include "Calculators/Rotation/NamiCameraRotationCalculator.h"
-#include "Calculators/Target/NamiCameraTargetCalculator.h"
+#include "Calculators/NamiCameraFOVCalculator.h"
+#include "Calculators/NamiCameraPositionCalculator.h"
+#include "Calculators/NamiCameraRotationCalculator.h"
+#include "Calculators/NamiCameraTargetCalculator.h"
 #include "NamiComposableCameraMode.generated.h"
 
 /**

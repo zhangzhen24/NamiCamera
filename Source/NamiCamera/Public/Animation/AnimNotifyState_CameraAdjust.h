@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimNotifies/AnimNotifyState.h"
-#include "CameraAdjust/NamiCameraAdjustParams.h"
+#include "Adjustments/NamiCameraAdjustParams.h"
 #include "AnimNotifyState_CameraAdjust.generated.h"
 
 class UNamiCameraAdjust;

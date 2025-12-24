@@ -2,7 +2,7 @@
 
 #include "ModeComponents/NamiCameraModeComponent.h"
 #include "CameraModes/NamiCameraModeBase.h"
-#include "Data/NamiCameraPipelineContext.h"
+#include "Core/NamiCameraPipelineContext.h"
 
 UNamiCameraModeComponent::UNamiCameraModeComponent()
 	: Priority(0)

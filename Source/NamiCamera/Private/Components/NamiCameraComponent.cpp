@@ -1,23 +1,23 @@
 ﻿// Copyright Qiu, Inc. All Rights Reserved.
 
 #include "Components/NamiCameraComponent.h"
-#include "Logging/LogNamiCamera.h"
-#include "Logging/LogNamiCameraMacros.h"
+#include "Core/LogNamiCamera.h"
+#include "Core/LogNamiCameraMacros.h"
 #include "Camera/CameraModifier.h"
 #include "CameraModes/NamiCameraModeBase.h"
 #include "CameraModes/NamiComposableCameraMode.h"
 #include "Components/NamiPlayerCameraManager.h"
-#include "Data/NamiCameraView.h"
-#include "Data/NamiCameraPipelineContext.h"
-#include "DevelopSetting/NamiCameraSettings.h"
-#include "CameraAdjust/NamiCameraAdjust.h"
-#include "Math/NamiCameraMath.h"
-#include "Stat/NamiCameraStats.h"
+#include "Core/NamiCameraView.h"
+#include "Core/NamiCameraPipelineContext.h"
+#include "Settings/NamiCameraSettings.h"
+#include "Adjustments/NamiCameraAdjust.h"
+#include "Core/NamiCameraMath.h"
+#include "Core/NamiCameraStats.h"
 #include "GameplayTagContainer.h"
-#include "Data/NamiCameraTags.h"
+#include "Core/NamiCameraTags.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
-#include "Data/NamiCameraDebugInfo.h"
+#include "Core/NamiCameraDebugInfo.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// FNamiCameraModeHandle

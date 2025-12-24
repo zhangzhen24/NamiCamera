@@ -1,8 +1,8 @@
 // Copyright Qiu, Inc. All Rights Reserved.
 
 #include "ModeComponents/NamiCameraEffectComponent.h"
-#include "Logging/LogNamiCamera.h"
-#include "Logging/LogNamiCameraMacros.h"
+#include "Core/LogNamiCamera.h"
+#include "Core/LogNamiCameraMacros.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraEffectComponent)
 

@@ -1,22 +1,22 @@
-ï»¿// Copyright Qiu, Inc. All Rights Reserved.
+// Copyright Qiu, Inc. All Rights Reserved.
 
 #include "Animation/AnimNotifyState_CameraAdjust.h"
 
-#include "CameraAdjust/NamiAnimNotifyCameraAdjust.h"
+#include "Adjustments/NamiCameraAdjust.h"
 #include "Components/NamiCameraComponent.h"
-#include "Logging/LogNamiCamera.h"
+#include "Core/LogNamiCamera.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
 UAnimNotifyState_CameraAdjust::UAnimNotifyState_CameraAdjust()
 {
-	// é»˜è®¤å€¼ - åŒ…è£…ç»“æ„ä½“é»˜è®¤éƒ½æ˜¯ç¦ç”¨çŠ¶æ€
+	// Ä¬ÈÏÖµ - °ü×°½á¹¹ÌåÄ¬ÈÏ¶¼ÊÇ½ûÓÃ×´Ì¬
 	BlendInTime = 0.15f;
 	BlendOutTime = 0.2f;
 	BlendType = ENamiCameraBlendType::EaseInOut;
 	Priority = 100;
 
-	// è¾“å…¥æ§åˆ¶é»˜è®¤å€¼
+	// ÊäÈë¿ØÖÆÄ¬ÈÏÖµ
 	bAllowPlayerInput = false;
 	InputInterruptThreshold = 1.0f;
 }
@@ -31,13 +31,13 @@ void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp
 		return;
 	}
 
-	// ç›¸æœºè°ƒæ•´ä»…åœ¨å®¢æˆ·ç«¯æ‰§è¡Œï¼ŒæœåŠ¡å™¨æ²¡æœ‰ç›¸æœº
+	// Ïà»úµ÷Õû½öÔÚ¿Í»§¶ËÖ´ĞĞ£¬·şÎñÆ÷Ã»ÓĞÏà»ú
 	if (MeshComp->GetWorld() && MeshComp->GetWorld()->GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
 
-	// è·å–ç›¸æœºç»„ä»¶
+	// »ñÈ¡Ïà»ú×é¼ş
 	UNamiCameraComponent* CameraComp = GetCameraComponent(MeshComp);
 	if (!CameraComp)
 	{
@@ -46,38 +46,38 @@ void UAnimNotifyState_CameraAdjust::NotifyBegin(USkeletalMeshComponent* MeshComp
 		return;
 	}
 
-	// ç¼“å­˜ç›¸æœºç»„ä»¶
+	// »º´æÏà»ú×é¼ş
 	CachedCameraComponent = CameraComp;
 
-	// åˆ›å»ºè°ƒæ•´å™¨å®ä¾‹
-	UNamiAnimNotifyCameraAdjust* Adjust = NewObject<UNamiAnimNotifyCameraAdjust>(CameraComp);
+	// ´´½¨µ÷ÕûÆ÷ÊµÀı
+	UNamiCameraAdjust* Adjust = NewObject<UNamiCameraAdjust>(CameraComp);
 	if (!Adjust)
 	{
 		UE_LOG(LogNamiCamera, Error, TEXT("[AnimNotifyState_CameraAdjust] Failed to create CameraAdjust instance"));
 		return;
 	}
 
-	// é…ç½®æ··åˆå‚æ•°
+	// ÅäÖÃ»ìºÏ²ÎÊı
 	Adjust->BlendInTime = BlendInTime;
 	Adjust->BlendOutTime = BlendOutTime;
 	Adjust->BlendType = BlendType;
 	Adjust->Priority = Priority;
 
-	// é…ç½®è¾“å…¥æ§åˆ¶å‚æ•°
+	// ÅäÖÃÊäÈë¿ØÖÆ²ÎÊı
 	Adjust->bAllowPlayerInput = bAllowPlayerInput;
 	Adjust->InputInterruptThreshold = InputInterruptThreshold;
 
-	// å¯¹äº ArmRotation Override æ¨¡å¼ï¼Œè®¾ç½®è‡‚æ—‹è½¬ç›®æ ‡å€¼
+	// ¶ÔÓÚ ArmRotation Override Ä£Ê½£¬ÉèÖÃ±ÛĞı×ªÄ¿±êÖµ
 	if (ArmRotation.bEnabled && ArmRotation.BlendMode == ENamiCameraAdjustBlendMode::Override)
 	{
 		Adjust->ArmRotationTarget = ArmRotation.Value;
 	}
 
-	// æ„å»ºå¹¶è®¾ç½®è°ƒæ•´å‚æ•°
+	// ¹¹½¨²¢ÉèÖÃµ÷Õû²ÎÊı
 	FNamiCameraAdjustParams Params = BuildAdjustParams();
-	Adjust->SetAdjustParams(Params);
+	Adjust->SetStaticParams(Params);
 
-	// æ¨é€è°ƒæ•´å™¨
+	// ÍÆËÍµ÷ÕûÆ÷
 	if (CameraComp->PushAdjustInstance(Adjust))
 	{
 		ActiveAdjust = Adjust;
@@ -95,19 +95,19 @@ void UAnimNotifyState_CameraAdjust::NotifyEnd(USkeletalMeshComponent* MeshComp, 
 {
 	Super::NotifyEnd(MeshComp, Animation, EventReference);
 
-	// ç›¸æœºè°ƒæ•´ä»…åœ¨å®¢æˆ·ç«¯æ‰§è¡Œï¼ŒæœåŠ¡å™¨æ²¡æœ‰ç›¸æœº
+	// Ïà»úµ÷Õû½öÔÚ¿Í»§¶ËÖ´ĞĞ£¬·şÎñÆ÷Ã»ÓĞÏà»ú
 	if (MeshComp && MeshComp->GetWorld() && MeshComp->GetWorld()->GetNetMode() == NM_DedicatedServer)
 	{
 		return;
 	}
 
-	// åœæ­¢è°ƒæ•´å™¨ï¼ˆå¼€å§‹BlendOutï¼‰
+	// Í£Ö¹µ÷ÕûÆ÷£¨¿ªÊ¼BlendOut£©
 	if (ActiveAdjust.IsValid())
 	{
 		UNamiCameraComponent* CameraComp = CachedCameraComponent.Get();
 		if (CameraComp)
 		{
-			// ä½¿ç”¨falseè®©å®ƒæ­£å¸¸BlendOutï¼Œè€Œä¸æ˜¯ç«‹å³åœæ­¢
+			// Ê¹ÓÃfalseÈÃËüÕı³£BlendOut£¬¶ø²»ÊÇÁ¢¼´Í£Ö¹
 			CameraComp->PopAdjust(ActiveAdjust.Get(), false);
 			UE_LOG(LogNamiCamera, Log, TEXT("[AnimNotifyState_CameraAdjust] Ended camera adjust for animation: %s"),
 				*GetNameSafe(Animation));
@@ -120,7 +120,7 @@ void UAnimNotifyState_CameraAdjust::NotifyEnd(USkeletalMeshComponent* MeshComp, 
 
 FString UAnimNotifyState_CameraAdjust::GetNotifyName_Implementation() const
 {
-	// æ„å»ºæè¿°æ€§åç§°
+	// ¹¹½¨ÃèÊöĞÔÃû³Æ
 	TArray<FString> ActiveAdjustments;
 
 	if (FOV.bEnabled)
@@ -176,21 +176,21 @@ UNamiCameraComponent* UAnimNotifyState_CameraAdjust::GetCameraComponent(USkeleta
 		return nullptr;
 	}
 
-	// å°è¯•ç›´æ¥ä»Ownerè·å–
+	// ³¢ÊÔÖ±½Ó´ÓOwner»ñÈ¡
 	UNamiCameraComponent* CameraComp = Owner->FindComponentByClass<UNamiCameraComponent>();
 	if (CameraComp)
 	{
 		return CameraComp;
 	}
 
-	// å¦‚æœOwneræ˜¯Pawnï¼Œå°è¯•ä»Controllerè·å–
+	// Èç¹ûOwnerÊÇPawn£¬³¢ÊÔ´ÓController»ñÈ¡
 	APawn* Pawn = Cast<APawn>(Owner);
 	if (Pawn)
 	{
 		APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
 		if (PC)
 		{
-			// ä»PlayerCameraManagerè·å–ViewTargetçš„ç›¸æœºç»„ä»¶
+			// ´ÓPlayerCameraManager»ñÈ¡ViewTargetµÄÏà»ú×é¼ş
 			if (PC->PlayerCameraManager)
 			{
 				AActor* ViewTarget = PC->PlayerCameraManager->GetViewTarget();
@@ -217,7 +217,7 @@ FNamiCameraAdjustParams UAnimNotifyState_CameraAdjust::BuildAdjustParams() const
 		Params.MarkFOVModified();
 	}
 
-	// è‡‚é•¿
+	// ±Û³¤
 	if (ArmLength.bEnabled)
 	{
 		Params.TargetArmLengthOffset = ArmLength.Value;
@@ -225,25 +225,25 @@ FNamiCameraAdjustParams UAnimNotifyState_CameraAdjust::BuildAdjustParams() const
 		Params.MarkTargetArmLengthModified();
 	}
 
-	// è‡‚æ—‹è½¬
+	// ±ÛĞı×ª
 	if (ArmRotation.bEnabled)
 	{
-		// Additive æ¨¡å¼ï¼šValue ä½œä¸ºåç§»é‡
-		// Override æ¨¡å¼ï¼šValue ä½œä¸ºç›®æ ‡ï¼ˆå·²åœ¨ NotifyBegin ä¸­è®¾ç½®åˆ° Adjust->ArmRotationTargetï¼‰
+		// Additive Ä£Ê½£ºValue ×÷ÎªÆ«ÒÆÁ¿
+		// Override Ä£Ê½£ºValue ×÷ÎªÄ¿±ê£¨ÒÑÔÚ NotifyBegin ÖĞÉèÖÃµ½ Adjust->ArmRotationTarget£©
 		if (ArmRotation.BlendMode == ENamiCameraAdjustBlendMode::Additive)
 		{
 			Params.ArmRotationOffset = ArmRotation.Value;
 		}
 		else
 		{
-			// Override æ¨¡å¼ä¸‹ï¼Œåç§»å€¼åœ¨ CalculateCombinedAdjustParams ä¸­ä» Target è®¡ç®—
+			// Override Ä£Ê½ÏÂ£¬Æ«ÒÆÖµÔÚ CalculateCombinedAdjustParams ÖĞ´Ó Target ¼ÆËã
 			Params.ArmRotationOffset = FRotator::ZeroRotator;
 		}
 		Params.ArmRotationBlendMode = ArmRotation.BlendMode;
 		Params.MarkArmRotationModified();
 	}
 
-	// ç›¸æœºä½ç½®åç§»
+	// Ïà»úÎ»ÖÃÆ«ÒÆ
 	if (CameraOffset.bEnabled)
 	{
 		Params.CameraLocationOffset = CameraOffset.Value;
@@ -251,7 +251,7 @@ FNamiCameraAdjustParams UAnimNotifyState_CameraAdjust::BuildAdjustParams() const
 		Params.MarkCameraLocationOffsetModified();
 	}
 
-	// ç›¸æœºæ—‹è½¬åç§»
+	// Ïà»úĞı×ªÆ«ÒÆ
 	if (CameraRotation.bEnabled)
 	{
 		Params.CameraRotationOffset = CameraRotation.Value;
@@ -259,7 +259,7 @@ FNamiCameraAdjustParams UAnimNotifyState_CameraAdjust::BuildAdjustParams() const
 		Params.MarkCameraRotationOffsetModified();
 	}
 
-	// Pivotåç§»
+	// PivotÆ«ÒÆ
 	if (PivotOffset.bEnabled)
 	{
 		Params.PivotOffset = PivotOffset.Value;

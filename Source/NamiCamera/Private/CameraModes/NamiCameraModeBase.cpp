@@ -3,10 +3,10 @@
 #include "CameraModes/NamiCameraModeBase.h"
 #include "Animation/BlendSpace.h"
 #include "Components/NamiCameraComponent.h"
-#include "Data/NamiCameraEnums.h"
+#include "Core/NamiCameraEnums.h"
 #include "ModeComponents/NamiCameraModeComponent.h"
 #include "GameFramework/Pawn.h"
-#include "Logging/LogNamiCameraMacros.h"
+#include "Core/LogNamiCameraMacros.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NamiCameraModeBase)
 

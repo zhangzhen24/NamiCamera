@@ -4,7 +4,7 @@
 #include "CollisionQueryParams.h"
 #include "DrawDebugHelpers.h"
 #include "WorldCollision.h"
-#include "Math/NamiCameraMath.h"
+#include "Core/NamiCameraMath.h"
 #include "Engine/World.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 

@@ -6,12 +6,12 @@
 #include "Camera/CameraComponent.h"
 
 // NamiCamera 模块头文件（按字母顺序排列）
-#include "CameraAdjust/NamiCameraAdjustParams.h"
+#include "Adjustments/NamiCameraAdjustParams.h"
 #include "CameraModes/NamiCameraModeBase.h"
-#include "Data/NamiCameraModeHandle.h"
-#include "Data/NamiCameraModeStack.h"
-#include "Data/NamiCameraModeStackEntry.h"
-#include "Data/NamiCameraPipelineContext.h"
+#include "Core/NamiCameraModeHandle.h"
+#include "Core/NamiCameraModeStack.h"
+#include "Core/NamiCameraModeStackEntry.h"
+#include "Core/NamiCameraPipelineContext.h"
 
 #include "NamiCameraComponent.generated.h"
 
@@ -21,6 +21,7 @@ class UNamiCameraAdjust;
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPushCameraModeDelegate, UNamiCameraModeBase *, CameraModeInstance);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPopCameraModeDelegate);
 
 /**
@@ -33,7 +34,7 @@ class NAMICAMERA_API UNamiCameraComponent : public UCameraComponent
 	GENERATED_BODY()
 
 public:
-	UNamiCameraComponent(const FObjectInitializer &ObjectInitializer = FObjectInitializer::Get());
+	UNamiCameraComponent(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	// ========== UActorComponent ==========
 	virtual void InitializeComponent() override;
@@ -41,26 +42,26 @@ public:
 	// ========== End UActorComponent ==========
 
 	// ========== UCameraComponent ==========
-	virtual void GetCameraView(float DeltaTime, FMinimalViewInfo &DesiredView) override;
+	virtual void GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredView) override;
 	// ========== End UCameraComponent ==========
 
 	// ========== 辅助函数 ==========
 
 	/** 获取所有者Pawn */
-	APawn *GetOwnerPawn() const;
+	APawn* GetOwnerPawn() const;
 
 	/** 获取所有者PlayerController */
-	APlayerController *GetOwnerPlayerController() const;
+	APlayerController* GetOwnerPlayerController() const;
 
 	/** 获取所有者PlayerCameraManager */
-	ANamiPlayerCameraManager *GetOwnerPlayerCameraManager() const;
+	ANamiPlayerCameraManager* GetOwnerPlayerCameraManager() const;
 
 	// ========== Debug ==========
 
 	/** 打印当前的相机模式堆栈 */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Debug")
 	void DumpCameraModeStack(bool bPrintToScreen = true, bool bPrintToLog = true,
-							 FLinearColor TextColor = FLinearColor::Green, float Duration = 0.2f) const;
+	                         FLinearColor TextColor = FLinearColor::Green, float Duration = 0.2f) const;
 
 	/** 获取默认相机模式类 */
 	TSubclassOf<UNamiCameraModeBase> GetDefaultCameraModeClass() const { return DefaultCameraMode; }
@@ -78,37 +79,37 @@ public:
 
 	/** 使用实例推送相机模式 */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modes")
-	FNamiCameraModeHandle PushCameraModeUsingInstance(UNamiCameraModeBase *CameraModeInstance, int32 Priority = 0);
+	FNamiCameraModeHandle PushCameraModeUsingInstance(UNamiCameraModeBase* CameraModeInstance, int32 Priority = 0);
 
 	/** 移除相机模式 */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modes")
-	bool PopCameraMode(UPARAM(ref) FNamiCameraModeHandle &ModeHandle);
+	bool PopCameraMode(UPARAM(ref) FNamiCameraModeHandle& ModeHandle);
 
 	/** 使用实例移除相机模式 */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modes")
-	bool PopCameraModeInstance(UNamiCameraModeBase *CameraMode);
+	bool PopCameraModeInstance(UNamiCameraModeBase* CameraMode);
 
 	/** 获取当前激活的相机模式 */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modes")
-	UNamiCameraModeBase *GetActiveCameraMode() const;
+	UNamiCameraModeBase* GetActiveCameraMode() const;
 
 	// ========== Camera Modifier ==========
 
 	/** 推送CameraModifier */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modifiers")
-	UCameraModifier *PushCameraModifier(TSubclassOf<UCameraModifier> CameraModifierClass);
+	UCameraModifier* PushCameraModifier(TSubclassOf<UCameraModifier> CameraModifierClass);
 
 	/** 使用实例推送CameraModifier */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modifiers")
-	bool PushCameraModifierInstance(UCameraModifier *CameraModifierInstance);
+	bool PushCameraModifierInstance(UCameraModifier* CameraModifierInstance);
 
 	/** 移除CameraModifier */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modifiers")
-	bool PopCameraModifierInstance(UCameraModifier *CameraModifierInstance);
+	bool PopCameraModifierInstance(UCameraModifier* CameraModifierInstance);
 
 	/** 获取激活的CameraModifiers */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Modifiers")
-	TArray<UCameraModifier *> GetActivateCameraModifiers() const;
+	TArray<UCameraModifier*> GetActivateCameraModifiers() const;
 
 	// ========== Adjust API ==========
 
@@ -120,7 +121,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments", meta = (DisplayName = "Push Adjust"))
 	UNamiCameraAdjust* PushAdjust(TSubclassOf<UNamiCameraAdjust> AdjustClass,
-		ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
+	                              ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
 
 	/**
 	 * 推送相机调整器实例
@@ -130,7 +131,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NamiCamera|Adjustments", meta = (DisplayName = "Push Adjust Instance"))
 	bool PushAdjustInstance(UNamiCameraAdjust* AdjustInstance,
-		ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
+	                        ENamiCameraAdjustDuplicatePolicy DuplicatePolicy = ENamiCameraAdjustDuplicatePolicy::KeepExisting);
 
 	/**
 	 * 弹出相机调整器
@@ -155,7 +156,7 @@ public:
 	 * @tparam T 调整器类型
 	 * @return 找到的调整器，如果不存在则返回nullptr
 	 */
-	template<typename T>
+	template <typename T>
 	T* FindAdjust() const
 	{
 		for (UNamiCameraAdjust* Adjust : CameraAdjustStack)
@@ -195,7 +196,7 @@ protected:
 	/** 组件初始化时使用的默认相机模式 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Settings",
 		meta = (AllowPrivateAccess = "true",
-				Tooltip = "相机组件初始化时使用的默认相机模式类"))
+			Tooltip = "相机组件初始化时使用的默认相机模式类"))
 	TSubclassOf<UNamiCameraModeBase> DefaultCameraMode;
 
 	/** 推送相机模式委托 */
@@ -209,31 +210,31 @@ protected:
 	/** 缓存的所有者 Pawn 引用 */
 	UPROPERTY(BlueprintReadOnly, Category = "NamiCamera",
 		meta = (AllowPrivateAccess = "true",
-				Tooltip = "拥有此相机组件的Pawn"))
+			Tooltip = "拥有此相机组件的Pawn"))
 	TObjectPtr<APawn> OwnerPawn;
 
 	/** 缓存的所有者 PlayerController 引用 */
 	UPROPERTY(BlueprintReadOnly, Category = "NamiCamera",
 		meta = (AllowPrivateAccess = "true",
-				Tooltip = "拥有此相机组件的玩家控制器"))
+			Tooltip = "拥有此相机组件的玩家控制器"))
 	TObjectPtr<APlayerController> OwnerPlayerController;
 
 	/** 缓存的所有者 PlayerCameraManager 引用 */
 	UPROPERTY(BlueprintReadOnly, Category = "NamiCamera",
 		meta = (AllowPrivateAccess = "true",
-				Tooltip = "拥有此相机组件的玩家相机管理器"))
+			Tooltip = "拥有此相机组件的玩家相机管理器"))
 	TObjectPtr<ANamiPlayerCameraManager> OwnerPlayerCameraManager;
 
 
 	/** 通知相机模式初始化 */
 	UFUNCTION()
-	void NotifyCameraModeInitialize(UNamiCameraModeBase *CameraModeInstance);
+	void NotifyCameraModeInitialize(UNamiCameraModeBase* CameraModeInstance);
 
 	/** 更新混合堆栈 */
 	void UpdateBlendingStack();
 
 	/** 从池中查找或添加相机模式实例 */
-	UNamiCameraModeBase *FindOrAddCameraModeInstanceInPool(TSubclassOf<UNamiCameraModeBase> CameraModeClass);
+	UNamiCameraModeBase* FindOrAddCameraModeInstanceInPool(TSubclassOf<UNamiCameraModeBase> CameraModeClass);
 
 	/** 在指定索引处移除相机模式 */
 	bool PullCameraModeAtIndex(int32 Index);
@@ -321,30 +322,30 @@ protected:
 
 	/** 位置混合速度（cm/s，0 = 瞬切，>0 = 平滑） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
-			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "10000.0",
-					  Tooltip = "相机位置混合速度。0 = 瞬切，>0 = 平滑过渡（单位：cm/s）"))
+		meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "10000.0",
+			Tooltip = "相机位置混合速度。0 = 瞬切，>0 = 平滑过渡（单位：cm/s）"))
 	float LocationBlendSpeed = 0.0f;
 
 	/** 旋转混合速度（度/s，0 = 瞬切，>0 = 平滑） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
-			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0",
-					  Tooltip = "相机旋转混合速度。0 = 瞬切，>0 = 平滑过渡（单位：度/s）"))
+		meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0",
+			Tooltip = "相机旋转混合速度。0 = 瞬切，>0 = 平滑过渡（单位：度/s）"))
 	float RotationBlendSpeed = 0.0f;
 
 	/** FOV 混合速度（度/s，0 = 瞬切，>0 = 平滑） */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
-			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0",
-					  Tooltip = "视野角混合速度。0 = 瞬切，>0 = 平滑过渡（单位：度/s）"))
+		meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "1000.0",
+			Tooltip = "视野角混合速度。0 = 瞬切，>0 = 平滑过渡（单位：度/s）"))
 	float FOVBlendSpeed = 0.0f;
 
 	FVector CurrentControlLocation;
 	FRotator CurrentControlRotation;
 	bool bHasInitializedControl = false;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
-			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "20000.0"))
+		meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "20000.0"))
 	float ControlLocationBlendSpeed = 1200.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Blending",
-			  meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "3600.0"))
+		meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "3600.0"))
 	float ControlRotationBlendSpeed = 360.0f;
 
 private:
@@ -367,6 +368,7 @@ private:
 	// ========== 输入打断调试 ==========
 	/** 输入打断后的帧计数器（用于调试日志） */
 	int32 InputInterruptDebugFrameCounter = 0;
+	
 	/** 打断前保存的视图信息 */
 	FNamiCameraView InputInterruptSavedView;
 

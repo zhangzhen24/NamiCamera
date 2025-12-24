@@ -1,35 +1,35 @@
-ï»¿// Copyright Qiu, Inc. All Rights Reserved.
+// Copyright Qiu, Inc. All Rights Reserved.
 
 #pragma once
 
 /**
- * NamiCamera æ’ä»¶ä¸»å…¥å£å¤´æ–‡ä»¶
+ * NamiCamera ²å¼şÖ÷Èë¿ÚÍ·ÎÄ¼ş
  *
- * åŒ…å«æ­¤æ–‡ä»¶å³å¯è®¿é—®æ‰€æœ‰ NamiCamera å…¬å…± APIã€‚
- * è¿™ä¸ºä½¿ç”¨æ­¤æ’ä»¶çš„é¡¹ç›®æä¾›äº†ä¾¿æ·çš„å•æ–‡ä»¶åŒ…å«æ–¹å¼ã€‚
+ * °üº¬´ËÎÄ¼ş¼´¿É·ÃÎÊËùÓĞ NamiCamera ¹«¹² API¡£
+ * ÕâÎªÊ¹ÓÃ´Ë²å¼şµÄÏîÄ¿Ìá¹©ÁË±ã½İµÄµ¥ÎÄ¼ş°üº¬·½Ê½¡£
  *
- * ä½¿ç”¨æ–¹å¼ï¼š
+ * Ê¹ÓÃ·½Ê½£º
  *   #include "NamiCamera.h"
  *
- * å¦‚éœ€åŠ å¿«ç¼–è¯‘é€Ÿåº¦ï¼Œä¹Ÿå¯ç›´æ¥åŒ…å«ç‰¹å®šå¤´æ–‡ä»¶ï¼š
+ * ÈçĞè¼Ó¿ì±àÒëËÙ¶È£¬Ò²¿ÉÖ±½Ó°üº¬ÌØ¶¨Í·ÎÄ¼ş£º
  *   #include "Components/NamiCameraComponent.h"
  *   #include "CameraModes/NamiCameraModeBase.h"
- *   ç­‰ç­‰
+ *   µÈµÈ
  */
 
 // ====================================================================================
-// æ ¸å¿ƒæ¨¡å—
+// ºËĞÄÄ£¿é
 // ====================================================================================
 
-#include "Data/NamiCameraModule.h"
-#include "Data/NamiCameraEnums.h"
-#include "Data/NamiCameraTags.h"
-#include "Data/NamiCameraInputProvider.h"
-#include "Logging/LogNamiCamera.h"
-#include "Math/NamiCameraMath.h"
+#include "Core/NamiCameraModule.h"
+#include "Core/NamiCameraEnums.h"
+#include "Core/NamiCameraTags.h"
+#include "Core/NamiCameraInputProvider.h"
+#include "Core/LogNamiCamera.h"
+#include "Core/NamiCameraMath.h"
 
 // ====================================================================================
-// ç»„ä»¶ï¼ˆå…¥å£ç‚¹ï¼‰
+// ×é¼ş£¨Èë¿Úµã£©
 // ====================================================================================
 
 #include "Components/NamiCameraComponent.h"
@@ -37,65 +37,65 @@
 #include "Components/NamiSpringArm.h"
 
 // ====================================================================================
-// æ¨¡å¼ï¼ˆæ ¸å¿ƒç›¸æœºé€»è¾‘ï¼‰
+// Ä£Ê½£¨ºËĞÄÏà»úÂß¼­£©
 // ====================================================================================
 
-// åŸºç±»å’ŒåŸºç¡€è®¾æ–½
+// »ùÀàºÍ»ù´¡ÉèÊ©
 #include "CameraModes/NamiCameraModeBase.h"
 #include "CameraModes/NamiCameraModeStack.h"
 #include "CameraModes/NamiCameraModeStackEntry.h"
 #include "CameraModes/NamiCameraModeHandle.h"
 
-// æ•°æ®ç»“æ„
-#include "Data/NamiCameraView.h"
-#include "Data/NamiCameraState.h"
-#include "Data/NamiCameraStateFlags.h"
-#include "Data/NamiBlendConfig.h"
-#include "Data/NamiCameraPipelineContext.h"
+// Êı¾İ½á¹¹
+#include "Core/NamiCameraView.h"
+#include "Core/NamiCameraState.h"
+#include "Core/NamiCameraStateFlags.h"
+#include "Core/NamiBlendConfig.h"
+#include "Core/NamiCameraPipelineContext.h"
 
-// ç»„åˆå¼ç›¸æœºæ¨¡å¼ï¼ˆç­–ç•¥/è®¡ç®—å™¨æ¨¡å¼ï¼‰
+// ×éºÏÊ½Ïà»úÄ£Ê½£¨²ßÂÔ/¼ÆËãÆ÷Ä£Ê½£©
 #include "CameraModes/NamiComposableCameraMode.h"
 #include "CameraModes/NamiFollowTarget.h"
 
-// å¼€ç®±å³ç”¨çš„é¢„è®¾
+// ¿ªÏä¼´ÓÃµÄÔ¤Éè
 #include "CameraModes/NamiThirdPersonCameraMode.h"
 #include "CameraModes/NamiDualFocusCameraMode.h"
 
 // ====================================================================================
-// è®¡ç®—å™¨ï¼ˆCalculator - Mode å†…éƒ¨ä½¿ç”¨ï¼ŒåŸ Strategyï¼‰
+// ¼ÆËãÆ÷£¨Calculator - Mode ÄÚ²¿Ê¹ÓÃ£¬Ô­ Strategy£©
 // ====================================================================================
 
-// åŸºç±»
+// »ùÀà
 #include "Calculators/NamiCameraCalculatorBase.h"
-#include "Calculators/Target/NamiCameraTargetCalculator.h"
-#include "Calculators/Position/NamiCameraPositionCalculator.h"
-#include "Calculators/Rotation/NamiCameraRotationCalculator.h"
-#include "Calculators/FOV/NamiCameraFOVCalculator.h"
+#include "Calculators/NamiCameraTargetCalculator.h"
+#include "Calculators/NamiCameraPositionCalculator.h"
+#include "Calculators/NamiCameraRotationCalculator.h"
+#include "Calculators/NamiCameraFOVCalculator.h"
 
-// ç›®æ ‡è®¡ç®—å™¨
+// Ä¿±ê¼ÆËãÆ÷
 #include "Calculators/Target/NamiSingleTargetCalculator.h"
 #include "Calculators/Target/NamiDualFocusTargetCalculator.h"
 
-// ä½ç½®è®¡ç®—å™¨
+// Î»ÖÃ¼ÆËãÆ÷
 #include "Calculators/Position/NamiOffsetPositionCalculator.h"
 #include "Calculators/Position/NamiEllipseOrbitPositionCalculator.h"
 
-// æ—‹è½¬è®¡ç®—å™¨
+// Ğı×ª¼ÆËãÆ÷
 #include "Calculators/Rotation/NamiControlRotationCalculator.h"
 #include "Calculators/Rotation/NamiLookAtRotationCalculator.h"
 
-// FOV è®¡ç®—å™¨
+// FOV ¼ÆËãÆ÷
 #include "Calculators/FOV/NamiStaticFOVCalculator.h"
 #include "Calculators/FOV/NamiFramingFOVCalculator.h"
 
 // ====================================================================================
-// æ¨¡å¼ç»„ä»¶ï¼ˆModeComponent - CameraMode çº§åˆ«çš„åŠŸèƒ½ç»„ä»¶ï¼‰
+// Ä£Ê½×é¼ş£¨ModeComponent - CameraMode ¼¶±ğµÄ¹¦ÄÜ×é¼ş£©
 // ====================================================================================
 
-// åŸºç±»
+// »ùÀà
 #include "ModeComponents/NamiCameraModeComponent.h"
 
-// å…·ä½“ç»„ä»¶
+// ¾ßÌå×é¼ş
 #include "ModeComponents/NamiCameraShakeComponent.h"
 #include "ModeComponents/NamiCameraCollisionComponent.h"
 #include "ModeComponents/NamiCameraDynamicFOVComponent.h"
@@ -105,19 +105,18 @@
 #include "ModeComponents/NamiCameraEffectComponent.h"
 
 // ====================================================================================
-// ç›¸æœºè°ƒæ•´å™¨ï¼ˆAdjust - ä¸´æ—¶æ•ˆæœï¼‰
+// Ïà»úµ÷ÕûÆ÷£¨Adjust - ÁÙÊ±Ğ§¹û£©
 // ====================================================================================
 
-#include "CameraAdjust/NamiCameraAdjust.h"
-#include "CameraAdjust/NamiCameraAdjustParams.h"
-#include "CameraAdjust/NamiCameraAdjustCurveBinding.h"
-#include "CameraAdjust/NamiAnimNotifyCameraAdjust.h"
+#include "Adjustments/NamiCameraAdjust.h"
+#include "Adjustments/NamiCameraAdjustParams.h"
+#include "Adjustments/NamiCameraAdjustCurveBinding.h"
 
 // ====================================================================================
-// åŠ¨ç”»é›†æˆ
+// ¶¯»­¼¯³É
 // ====================================================================================
 
 #include "Animation/AnimNotifyState_CameraAdjust.h"
 
-// é…ç½®
-#include "DevelopSetting/NamiCameraSettings.h"
+// ÅäÖÃ
+#include "Settings/NamiCameraSettings.h"
